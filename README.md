@@ -1,4 +1,4 @@
-# rust-vibe-coding-template
+# ngy-min-action
 
 用自然语言驱动 AI 开发 Rust 项目的骨架：工具链、格式化、lint、测试与治理门禁已预置，
 开发规范以 [`.specify/memory/constitution.md`](.specify/memory/constitution.md) 为准。
