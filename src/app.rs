@@ -7,6 +7,7 @@ mod main_view;
 mod popup;
 mod today_view;
 
+use std::collections::HashSet;
 use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -58,9 +59,14 @@ pub struct MinActionApp {
     pub(crate) daily_cap: u8,
     pub(crate) selected_goal: Option<GoalId>,
     pub(crate) selected_category: Option<CategoryId>,
-    pub(crate) new_goal: String,
-    pub(crate) new_category: String,
     pub(crate) new_task: String,
+    pub(crate) show_new_goal: bool,
+    pub(crate) show_new_category: bool,
+    pub(crate) draft_goal_name: String,
+    pub(crate) draft_category_name: String,
+    pub(crate) draft_category_goal: Option<GoalId>,
+    pub(crate) collapsed_goals: HashSet<GoalId>,
+    pub(crate) root_collapsed: bool,
     pub(crate) error: Option<String>,
     pub(crate) ticks: Receiver<TickEvent>,
     pub(crate) popup: Arc<Mutex<PopupState>>,
@@ -92,9 +98,14 @@ impl MinActionApp {
             daily_cap: 5,
             selected_goal: None,
             selected_category: None,
-            new_goal: String::new(),
-            new_category: String::new(),
             new_task: String::new(),
+            show_new_goal: false,
+            show_new_category: false,
+            draft_goal_name: String::new(),
+            draft_category_name: String::new(),
+            draft_category_goal: None,
+            collapsed_goals: HashSet::new(),
+            root_collapsed: false,
             error: None,
             ticks,
             popup: Arc::new(Mutex::new(PopupState::default())),
