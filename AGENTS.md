@@ -43,6 +43,15 @@ cargo audit       # 依赖漏洞
 | 可观测性 | 结构化字段，错误只记一次，stdout 放数据 / stderr 放日志 | VII |
 | 安全 | 输入在边界校验，禁止拼接注入，机密不入库 | VIII |
 
+## 提交策略
+
+- **自动提交**：每完成一个 spec-kit 阶段（`/speckit.specify`、`/speckit.plan`、
+  `/speckit.tasks`，以及 `/speckit.implement` 的每个任务批次），立即在功能分支上提交产物，
+  不再逐次征求确认。
+- 提交按逻辑拆分：规格与设计产物一个提交，流程或治理调整另一个提交；提交信息用
+  `<type>(<scope>): <说明>` 形式。
+- 只在两种情况下停下来询问：当前不在功能分支上，或需要改动 `main`。
+
 ## 禁止事项
 
 - 不手改 `Cargo.lock`，用 `cargo` 命令更新。
