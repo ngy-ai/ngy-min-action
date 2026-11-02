@@ -152,7 +152,7 @@ description: "Task list for 001-min-action-core"
 - [X] T034 [P] 编写 `scripts/perf.ps1`：连续 20 次测量启动到可交互、跨日弹窗延迟、交互响应，并用 `Get-Process` 采样 `WorkingSet` 与空闲 CPU，输出 p95；结果填入 issue #1 的表格
 - [X] T035 [P] 更新 `README.md`：说明这是 Windows 桌面常驻程序（`cargo run` 启动、关闭主窗口即退出、最小化继续驻留），替换现有 CLI 描述
 - [X] T036 统一结构化日志：在 `src/store/*.rs`、`src/notify.rs`、`src/app.rs` 的操作边界补齐 `op` / `result` / `elapsed_ms` 字段，错误只在 `src/main.rs` 边界记一次，production 只写 JSON 文件且 stdout/stderr 洁净（宪法 VII）
-- [ ] T037 跑静态与测试门禁：按 `.github/workflows/ci.yml` 的六个门禁逐项执行，其中可本地复现的五项为 `cargo fmt --check`、`cargo clippy --all-targets --all-features -- -D warnings`、`cargo test --all-targets --all-features`、`cargo machete`、`cargo audit`，全部通过
+- [X] T037 跑静态与测试门禁：按 `.github/workflows/ci.yml` 的六个门禁逐项执行，其中可本地复现的五项为 `cargo fmt --check`、`cargo clippy --all-targets --all-features -- -D warnings`、`cargo test --all-targets --all-features`、`cargo machete`、`cargo audit`，全部通过
 - [ ] T038 按 `quickstart.md` 手工走完五个验收场景（三层结构、每日最小行动、遗忘曲线、常驻弹窗、异常路径），逐条记录结果
 - [ ] T039 按阶段拆分提交并写 PR 描述：说明为什么改、链接 `specs/001-min-action-core/plan.md` 与 `spec.md`、列出原则 V 预算例外与 `TODO(#1)`、附单开发者仓库条款的自我证明
 
