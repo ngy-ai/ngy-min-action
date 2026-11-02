@@ -169,6 +169,32 @@ impl Store {
         Ok(categories)
     }
 
+    /// 列出所有未删除的分类，供界面把行动映射成「分类 · 任务」。
+    ///
+    /// # Errors
+    ///
+    /// 读写失败时返回 [`DomainError::Store`]。
+    pub fn all_categories(&self) -> Result<Vec<Category>, DomainError> {
+        let connection = self.guard();
+        let mut statement = connection.prepare(
+            "SELECT id, goal_id, name, created_at FROM categories
+             WHERE deleted_at IS NULL ORDER BY goal_id, id",
+        )?;
+        let rows = statement.query_map([], |row| {
+            Ok(Category {
+                id: CategoryId(row.get(0)?),
+                goal_id: GoalId(row.get(1)?),
+                name: row.get(2)?,
+                created_at: row.get(3)?,
+            })
+        })?;
+        let mut categories = Vec::new();
+        for row in rows {
+            categories.push(row?);
+        }
+        Ok(categories)
+    }
+
     /// 重命名分类。
     ///
     /// # Errors

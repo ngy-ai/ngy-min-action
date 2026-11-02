@@ -7,6 +7,8 @@ rust-version = "1.97"
 [dependencies]
 anyhow = "1"
 chrono = { version = "0.4", features = ["clock"] }
+eframe = "0.37"
 ngy-utils-tracing = "0.7"
 rusqlite = { version = "0.41", features = ["bundled"] }
+tokio = { version = "1.54", features = ["rt-multi-thread", "time", "sync"] }
 tracing = "0.1"
