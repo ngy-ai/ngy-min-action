@@ -6,7 +6,7 @@ use crate::model::{
     CategoryId, DomainError, MAX_TASK_NAME_CHARS, Task, TaskDraft, TaskId, TaskStatus,
     validate_estimated_minutes, validate_name,
 };
-use crate::store::{Store, decode_date, encode_date, now_rfc3339};
+use crate::store::{OpTrace, Store, decode_date, encode_date, now_rfc3339};
 
 impl Store {
     /// 在分类下创建任务。
@@ -19,6 +19,7 @@ impl Store {
         category: CategoryId,
         draft: TaskDraft,
     ) -> Result<TaskId, DomainError> {
+        let mut trace = OpTrace::begin("create_task");
         let name = validate_name(&draft.name, "任务名称", MAX_TASK_NAME_CHARS)?;
         let estimated = validate_estimated_minutes(draft.estimated_minutes)?;
 
@@ -58,7 +59,9 @@ impl Store {
             params![id, now_rfc3339()],
         )?;
         transaction.commit()?;
-        Ok(TaskId(id))
+        let task = TaskId(id);
+        trace.ok();
+        Ok(task)
     }
 
     /// 列出分类下未删除的任务。
@@ -67,6 +70,7 @@ impl Store {
     ///
     /// 读写失败时返回 [`DomainError::Store`]。
     pub fn tasks(&self, category: CategoryId) -> Result<Vec<Task>, DomainError> {
+        let mut trace = OpTrace::begin("tasks");
         let connection = self.guard();
         let mut statement = connection.prepare(
             "SELECT id, category_id, name, freq_kind, freq_interval, estimated_minutes,
@@ -80,6 +84,7 @@ impl Store {
         for row in rows {
             tasks.push(row?);
         }
+        trace.ok();
         Ok(tasks)
     }
 
@@ -89,6 +94,7 @@ impl Store {
     ///
     /// 读写失败时返回 [`DomainError::Store`]。
     pub fn active_tasks(&self) -> Result<Vec<Task>, DomainError> {
+        let mut trace = OpTrace::begin("active_tasks");
         let connection = self.guard();
         let mut statement = connection.prepare(
             "SELECT id, category_id, name, freq_kind, freq_interval, estimated_minutes,
@@ -102,6 +108,7 @@ impl Store {
         for row in rows {
             tasks.push(row?);
         }
+        trace.ok();
         Ok(tasks)
     }
 
@@ -111,6 +118,7 @@ impl Store {
     ///
     /// 名称非法或任务不存在时返回相应 [`DomainError`]。
     pub fn rename_task(&self, id: TaskId, name: &str) -> Result<(), DomainError> {
+        let mut trace = OpTrace::begin("rename_task");
         let name = validate_name(name, "任务名称", MAX_TASK_NAME_CHARS)?;
         let connection = self.guard();
         let updated = connection.execute(
@@ -123,6 +131,7 @@ impl Store {
                 id: id.0,
             });
         }
+        trace.ok();
         Ok(())
     }
 
@@ -134,6 +143,7 @@ impl Store {
     ///
     /// 任务不存在时返回 [`DomainError::NotFound`]。
     pub fn set_task_status(&self, id: TaskId, status: TaskStatus) -> Result<(), DomainError> {
+        let mut trace = OpTrace::begin("set_task_status");
         let connection = self.guard();
         let updated = connection.execute(
             "UPDATE tasks SET status = ?2 WHERE id = ?1 AND deleted_at IS NULL",
@@ -145,6 +155,7 @@ impl Store {
                 id: id.0,
             });
         }
+        trace.ok();
         Ok(())
     }
 
@@ -154,6 +165,7 @@ impl Store {
     ///
     /// 任务不存在时返回 [`DomainError::NotFound`]。
     pub fn delete_task(&self, id: TaskId) -> Result<(), DomainError> {
+        let mut trace = OpTrace::begin("delete_task");
         let mut connection = self.guard();
         let transaction = connection.transaction()?;
         let updated = transaction.execute(
@@ -172,6 +184,7 @@ impl Store {
             params![id.0],
         )?;
         transaction.commit()?;
+        trace.ok();
         Ok(())
     }
 

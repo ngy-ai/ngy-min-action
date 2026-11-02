@@ -11,6 +11,7 @@ mod task;
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
+use std::time::Instant;
 
 use chrono::{NaiveDate, Utc};
 use rusqlite::Connection;
@@ -84,6 +85,43 @@ impl From<rusqlite::Error> for DomainError {
     }
 }
 
+/// 存储操作的耗时记录器。
+///
+/// 构造时记进入，析构时记退出；调用 [`OpTrace::ok`] 标记成功，未标记即视为失败。
+/// 只写结果类别与耗时，错误详情由处理边界（`main` 或界面层）记录一次，避免重复打点。
+pub(crate) struct OpTrace {
+    op: &'static str,
+    started: Instant,
+    succeeded: bool,
+}
+
+impl OpTrace {
+    pub(crate) fn begin(op: &'static str) -> Self {
+        tracing::debug!(op, result = "begin", "操作进入");
+        Self {
+            op,
+            started: Instant::now(),
+            succeeded: false,
+        }
+    }
+
+    pub(crate) fn ok(&mut self) {
+        self.succeeded = true;
+    }
+}
+
+impl Drop for OpTrace {
+    fn drop(&mut self) {
+        let result = if self.succeeded { "ok" } else { "error" };
+        tracing::debug!(
+            op = self.op,
+            result,
+            elapsed_ms = crate::common::elapsed_ms(self.started),
+            "操作退出"
+        );
+    }
+}
+
 /// SQLite 存储门面。
 #[derive(Debug, Clone)]
 pub struct Store {
@@ -98,6 +136,7 @@ impl Store {
     ///
     /// 目录不可写、文件无法打开或建表失败时返回 [`StoreError`]。
     pub fn open(path: &Path) -> Result<Self, StoreError> {
+        let started = Instant::now();
         if let Some(parent) = path.parent()
             && !parent.as_os_str().is_empty()
         {
@@ -128,6 +167,14 @@ impl Store {
         schema::apply(&connection).map_err(|error| StoreError::Migrate {
             reason: error.to_string(),
         })?;
+
+        tracing::info!(
+            op = "store_open",
+            result = "ok",
+            path = %path.display(),
+            elapsed_ms = crate::common::elapsed_ms(started),
+            "数据库已就绪"
+        );
 
         Ok(Store {
             connection: Arc::new(Mutex::new(connection)),

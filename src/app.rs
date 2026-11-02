@@ -10,13 +10,15 @@ mod today_view;
 use std::collections::HashSet;
 use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use chrono::NaiveDate;
 use eframe::egui;
+use tracing::{debug, info, warn};
 
 use crate::clock::Clock;
-use crate::model::{Action, Category, CategoryId, Goal, GoalId, Task};
+use crate::common::elapsed_ms;
+use crate::model::{Action, Category, CategoryId, Goal, GoalId, ReminderState, Task};
 use crate::store::Store;
 
 /// 主窗口标题。
@@ -120,6 +122,7 @@ impl MinActionApp {
     ///
     /// 任一查询失败时返回错误并保留上一次的内存快照。
     pub fn reload(&mut self) -> anyhow::Result<()> {
+        let started = Instant::now();
         self.daily_cap = self.store.daily_cap()?;
         self.goals = self.store.goals()?;
 
@@ -156,6 +159,14 @@ impl MinActionApp {
 
         self.actions = self.store.generate_day(self.today, self.daily_cap)?;
         self.deferred = self.store.deferred_count(self.today)?;
+        debug!(
+            op = "reload",
+            result = "ok",
+            elapsed_ms = elapsed_ms(started),
+            actions = self.actions.len(),
+            deferred = self.deferred,
+            "界面数据已刷新"
+        );
         Ok(())
     }
 
@@ -166,14 +177,37 @@ impl MinActionApp {
         &mut self,
         operation: impl FnOnce(&Self) -> Result<T, crate::model::DomainError>,
     ) -> Option<T> {
+        let started = Instant::now();
         match operation(self) {
             Ok(value) => {
                 if let Err(error) = self.reload() {
+                    warn!(
+                        op = "apply",
+                        result = "refresh_error",
+                        elapsed_ms = elapsed_ms(started),
+                        error = %error,
+                        "操作已生效，但随后的刷新失败"
+                    );
                     self.error = Some(format!("刷新失败：{error}"));
+                } else {
+                    debug!(
+                        op = "apply",
+                        result = "ok",
+                        elapsed_ms = elapsed_ms(started),
+                        "操作已完成"
+                    );
                 }
                 Some(value)
             }
             Err(error) => {
+                // 界面用状态条展示错误，不会向上传播；这里是它唯一的一次日志记录。
+                warn!(
+                    op = "apply",
+                    result = "error",
+                    elapsed_ms = elapsed_ms(started),
+                    error = %error,
+                    "操作失败"
+                );
                 self.error = Some(error.to_string());
                 None
             }
@@ -182,15 +216,42 @@ impl MinActionApp {
 
     /// 切换目标或分类后刷新其下内容。
     pub(crate) fn refresh_scope(&mut self) {
+        let started = Instant::now();
         if let Err(error) = self.reload() {
+            warn!(
+                op = "refresh_scope",
+                result = "error",
+                elapsed_ms = elapsed_ms(started),
+                error = %error,
+                "切换范围后刷新失败"
+            );
             self.error = Some(format!("刷新失败：{error}"));
         }
     }
 
     /// 按当前数据库状态刷新提示窗口的判定。
     fn sync_popup(&mut self) {
-        let pending = self.store.pending_count(self.today).unwrap_or(0);
-        let state = self.store.reminder_state().unwrap_or_default();
+        let pending = self
+            .store
+            .pending_count(self.today)
+            .unwrap_or_else(|error| {
+                debug!(
+                    op = "popup",
+                    result = "count_error",
+                    error = %error,
+                    "读取待办数量失败，按 0 处理"
+                );
+                0
+            });
+        let state = self.store.reminder_state().unwrap_or_else(|error| {
+            debug!(
+                op = "popup",
+                result = "state_error",
+                error = %error,
+                "读取提示记录失败，按未提示处理"
+            );
+            ReminderState::default()
+        });
         let dismissed = self
             .popup
             .lock()
@@ -198,14 +259,37 @@ impl MinActionApp {
             .dismissed;
 
         if dismissed {
+            debug!(
+                op = "popup",
+                result = "dismissed",
+                "本次运行已关闭提示，不再弹出"
+            );
             return;
         }
 
-        if crate::notify::should_notify(&state, self.today, pending)
-            && self.store.mark_notified(self.today).is_ok()
-            && let Ok(mut guard) = self.popup.lock()
-        {
-            guard.pending = Some(pending);
+        if !crate::notify::should_notify(&state, self.today, pending) {
+            debug!(
+                op = "popup",
+                result = "skipped",
+                pending,
+                "今天不满足提示条件"
+            );
+            return;
+        }
+
+        match self.store.mark_notified(self.today) {
+            Ok(()) => {
+                if let Ok(mut guard) = self.popup.lock() {
+                    guard.pending = Some(pending);
+                    info!(op = "popup", result = "shown", pending, "已弹出今日提示");
+                }
+            }
+            Err(error) => debug!(
+                op = "popup",
+                result = "persist_error",
+                error = %error,
+                "未能记录提示日期，本次不弹窗"
+            ),
         }
     }
 
@@ -214,9 +298,30 @@ impl MinActionApp {
         if today == self.today {
             return;
         }
+        let started = Instant::now();
+        let previous = self.today;
         self.today = today;
-        if let Err(error) = self.reload() {
-            self.error = Some(format!("跨日刷新失败：{error}"));
+        match self.reload() {
+            Ok(()) => info!(
+                op = "day_rollover",
+                result = "ok",
+                from = %previous,
+                to = %today,
+                elapsed_ms = elapsed_ms(started),
+                "已切换到新的一天"
+            ),
+            Err(error) => {
+                self.error = Some(format!("跨日刷新失败：{error}"));
+                warn!(
+                    op = "day_rollover",
+                    result = "error",
+                    from = %previous,
+                    to = %today,
+                    elapsed_ms = elapsed_ms(started),
+                    error = %error,
+                    "跨日刷新失败"
+                );
+            }
         }
         self.sync_popup();
         ctx.request_repaint();
@@ -260,14 +365,40 @@ impl MinActionApp {
                 .add(egui::DragValue::new(&mut cap).range(1..=20))
                 .changed()
             {
+                let started = Instant::now();
                 match self.store.set_daily_cap(cap) {
                     Ok(()) => {
                         self.daily_cap = cap;
+                        info!(
+                            op = "set_daily_cap",
+                            result = "ok",
+                            cap,
+                            elapsed_ms = elapsed_ms(started),
+                            "每日上限已更新"
+                        );
                         if let Err(error) = self.reload() {
                             self.error = Some(format!("刷新失败：{error}"));
+                            warn!(
+                                op = "set_daily_cap",
+                                result = "refresh_error",
+                                cap,
+                                elapsed_ms = elapsed_ms(started),
+                                error = %error,
+                                "每日上限已更新，但随后的刷新失败"
+                            );
                         }
                     }
-                    Err(error) => self.error = Some(error.to_string()),
+                    Err(error) => {
+                        self.error = Some(error.to_string());
+                        warn!(
+                            op = "set_daily_cap",
+                            result = "error",
+                            cap,
+                            elapsed_ms = elapsed_ms(started),
+                            error = %error,
+                            "每日上限更新失败"
+                        );
+                    }
                 }
             }
         });
@@ -302,7 +433,14 @@ impl eframe::App for MinActionApp {
         self.show_popup(&ctx);
 
         if self.take_dismissed() {
-            let _ = self.store.mark_viewed(self.today);
+            if let Err(error) = self.store.mark_viewed(self.today) {
+                warn!(
+                    op = "mark_viewed",
+                    result = "error",
+                    error = %error,
+                    "记录查看状态失败"
+                );
+            }
             ctx.send_viewport_cmd_to(egui::ViewportId::ROOT, egui::ViewportCommand::Focus);
         }
     }

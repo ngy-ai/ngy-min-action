@@ -9,7 +9,7 @@ use crate::model::{
     TaskStatus,
 };
 use crate::schedule::{PlanInput, advance_review, plan_day};
-use crate::store::{Store, decode_date, encode_date, now_rfc3339};
+use crate::store::{OpTrace, Store, decode_date, encode_date, now_rfc3339};
 
 impl Store {
     /// 列出某一天的全部行动，按展示顺序排列。
@@ -18,8 +18,11 @@ impl Store {
     ///
     /// 读写失败时返回 [`DomainError::Store`]。
     pub fn actions_on(&self, today: NaiveDate) -> Result<Vec<Action>, DomainError> {
+        let mut trace = OpTrace::begin("actions_on");
         let connection = self.guard();
-        load_actions(&connection, today)
+        let actions = load_actions(&connection, today)?;
+        trace.ok();
+        Ok(actions)
     }
 
     /// 生成某一天的清单，幂等。
@@ -35,6 +38,7 @@ impl Store {
         today: NaiveDate,
         daily_cap: u8,
     ) -> Result<Vec<Action>, DomainError> {
+        let mut trace = OpTrace::begin("generate_day");
         {
             let mut connection = self.guard();
             let transaction = connection.transaction()?;
@@ -100,7 +104,9 @@ impl Store {
 
             transaction.commit()?;
         }
-        self.actions_on(today)
+        let actions = self.actions_on(today)?;
+        trace.ok();
+        Ok(actions)
     }
 
     /// 某个任务在遗忘曲线上的位置。
@@ -109,8 +115,9 @@ impl Store {
     ///
     /// 任务不存在时返回 [`DomainError::NotFound`]。
     pub fn review_progress(&self, task: TaskId) -> Result<ReviewProgress, DomainError> {
+        let mut trace = OpTrace::begin("review_progress");
         let connection = self.guard();
-        connection
+        let progress = connection
             .query_row(
                 "SELECT task_id, level, next_review_on, graduated
                    FROM review_progress WHERE task_id = ?1",
@@ -121,7 +128,9 @@ impl Store {
             .ok_or(DomainError::NotFound {
                 entity: "任务的复习进度",
                 id: task.0,
-            })
+            })?;
+        trace.ok();
+        Ok(progress)
     }
 
     /// 重置某个任务的复习进度。
@@ -130,11 +139,12 @@ impl Store {
     ///
     /// 任务不存在时返回 [`DomainError::NotFound`]。
     pub fn reset_review_progress(&self, task: TaskId) -> Result<(), DomainError> {
+        let mut trace = OpTrace::begin("reset_review_progress");
         let connection = self.guard();
         let updated = connection.execute(
             "UPDATE review_progress
-                SET level = 0, next_review_on = NULL, graduated = 0, updated_at = ?2
-              WHERE task_id = ?1",
+               SET level = 0, next_review_on = NULL, graduated = 0, updated_at = ?2
+             WHERE task_id = ?1",
             params![task.0, now_rfc3339()],
         )?;
         if updated == 0 {
@@ -143,6 +153,7 @@ impl Store {
                 id: task.0,
             });
         }
+        trace.ok();
         Ok(())
     }
 
@@ -152,12 +163,14 @@ impl Store {
     ///
     /// 读写失败时返回 [`DomainError::Store`]。
     pub fn pending_count(&self, today: NaiveDate) -> Result<usize, DomainError> {
+        let mut trace = OpTrace::begin("pending_count");
         let connection = self.guard();
         let count: i64 = connection.query_row(
             "SELECT COUNT(*) FROM actions WHERE on_date = ?1 AND status = 'pending'",
             params![encode_date(today)],
             |row| row.get(0),
         )?;
+        trace.ok();
         Ok(usize::try_from(count).unwrap_or(usize::MAX))
     }
 
@@ -167,12 +180,14 @@ impl Store {
     ///
     /// 读写失败时返回 [`DomainError::Store`]。
     pub fn deferred_count(&self, today: NaiveDate) -> Result<usize, DomainError> {
+        let mut trace = OpTrace::begin("deferred_count");
         let connection = self.guard();
         let count: i64 = connection.query_row(
             "SELECT COUNT(*) FROM actions WHERE on_date = ?1 AND status = 'deferred'",
             params![encode_date(today)],
             |row| row.get(0),
         )?;
+        trace.ok();
         Ok(usize::try_from(count).unwrap_or(usize::MAX))
     }
 
@@ -186,6 +201,7 @@ impl Store {
     /// 行动不存在时返回 [`DomainError::NotFound`]；复习级别越界时返回
     /// [`DomainError::InvalidValue`]。
     pub fn settle_action(&self, action: ActionId, next: ActionStatus) -> Result<(), DomainError> {
+        let mut trace = OpTrace::begin("settle_action");
         let mut connection = self.guard();
         let transaction = connection.transaction()?;
 
@@ -235,6 +251,7 @@ impl Store {
             params![action.0, next.as_str(), now_rfc3339()],
         )?;
         transaction.commit()?;
+        trace.ok();
         Ok(())
     }
 
@@ -244,6 +261,7 @@ impl Store {
     ///
     /// 该行动没有可撤销的结算时返回 [`DomainError::NotFound`]。
     pub fn undo_last_settlement(&self, action: ActionId) -> Result<(), DomainError> {
+        let mut trace = OpTrace::begin("undo_last_settlement");
         let mut connection = self.guard();
         let transaction = connection.transaction()?;
 
@@ -297,6 +315,7 @@ impl Store {
             params![settlement_id],
         )?;
         transaction.commit()?;
+        trace.ok();
         Ok(())
     }
 }

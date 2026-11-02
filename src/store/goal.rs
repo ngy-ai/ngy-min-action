@@ -6,7 +6,7 @@ use crate::model::{
     Category, CategoryId, DeletionImpact, DomainError, Goal, GoalId, MAX_CATEGORY_NAME,
     MAX_DESCRIPTION, MAX_GOAL_NAME, validate_name,
 };
-use crate::store::{Store, is_unique_violation, now_rfc3339};
+use crate::store::{OpTrace, Store, is_unique_violation, now_rfc3339};
 
 impl Store {
     /// 创建目标。
@@ -19,6 +19,7 @@ impl Store {
         name: &str,
         description: Option<&str>,
     ) -> Result<GoalId, DomainError> {
+        let mut trace = OpTrace::begin("create_goal");
         let name = validate_name(name, "目标名称", MAX_GOAL_NAME)?;
         let description = normalize_description(description)?;
         let connection = self.guard();
@@ -26,7 +27,9 @@ impl Store {
             "INSERT INTO goals (name, description, created_at) VALUES (?1, ?2, ?3)",
             params![name, description, now_rfc3339()],
         )?;
-        Ok(GoalId(connection.last_insert_rowid()))
+        let id = GoalId(connection.last_insert_rowid());
+        trace.ok();
+        Ok(id)
     }
 
     /// 列出所有未删除的目标。
@@ -35,6 +38,7 @@ impl Store {
     ///
     /// 读写失败时返回 [`DomainError::Store`]。
     pub fn goals(&self) -> Result<Vec<Goal>, DomainError> {
+        let mut trace = OpTrace::begin("goals");
         let connection = self.guard();
         let mut statement = connection.prepare(
             "SELECT id, name, description, created_at FROM goals
@@ -52,6 +56,7 @@ impl Store {
         for row in rows {
             goals.push(row?);
         }
+        trace.ok();
         Ok(goals)
     }
 
@@ -62,6 +67,7 @@ impl Store {
     /// 名称为空或超长时返回 [`DomainError::InvalidName`]；目标不存在时返回
     /// [`DomainError::NotFound`]。
     pub fn rename_goal(&self, id: GoalId, name: &str) -> Result<(), DomainError> {
+        let mut trace = OpTrace::begin("rename_goal");
         let name = validate_name(name, "目标名称", MAX_GOAL_NAME)?;
         let connection = self.guard();
         let updated = connection.execute(
@@ -74,6 +80,7 @@ impl Store {
                 id: id.0,
             });
         }
+        trace.ok();
         Ok(())
     }
 
@@ -85,6 +92,7 @@ impl Store {
     ///
     /// 目标不存在时返回 [`DomainError::NotFound`]。
     pub fn delete_goal(&self, id: GoalId) -> Result<DeletionImpact, DomainError> {
+        let mut trace = OpTrace::begin("delete_goal");
         let mut connection = self.guard();
         let transaction = connection.transaction()?;
         let impact = goal_impact(&transaction, id.0)?;
@@ -117,6 +125,7 @@ impl Store {
             params![id.0],
         )?;
         transaction.commit()?;
+        trace.ok();
         Ok(impact)
     }
 
@@ -127,10 +136,11 @@ impl Store {
     /// 同一目标下重名时返回 [`DomainError::DuplicateName`]；目标不存在时返回
     /// [`DomainError::NotFound`]。
     pub fn create_category(&self, goal: GoalId, name: &str) -> Result<CategoryId, DomainError> {
+        let mut trace = OpTrace::begin("create_category");
         let name = validate_name(name, "分类名称", MAX_CATEGORY_NAME)?;
         let connection = self.guard();
         ensure_goal_exists(&connection, goal.0)?;
-        match connection.execute(
+        let outcome = match connection.execute(
             "INSERT INTO categories (goal_id, name, created_at) VALUES (?1, ?2, ?3)",
             params![goal.0, name, now_rfc3339()],
         ) {
@@ -140,7 +150,11 @@ impl Store {
                 name,
             }),
             Err(error) => Err(error.into()),
+        };
+        if outcome.is_ok() {
+            trace.ok();
         }
+        outcome
     }
 
     /// 列出目标下未删除的分类。
@@ -149,6 +163,7 @@ impl Store {
     ///
     /// 读写失败时返回 [`DomainError::Store`]。
     pub fn categories(&self, goal: GoalId) -> Result<Vec<Category>, DomainError> {
+        let mut trace = OpTrace::begin("categories");
         let connection = self.guard();
         let mut statement = connection.prepare(
             "SELECT id, goal_id, name, created_at FROM categories
@@ -166,6 +181,7 @@ impl Store {
         for row in rows {
             categories.push(row?);
         }
+        trace.ok();
         Ok(categories)
     }
 
@@ -175,6 +191,7 @@ impl Store {
     ///
     /// 读写失败时返回 [`DomainError::Store`]。
     pub fn all_categories(&self) -> Result<Vec<Category>, DomainError> {
+        let mut trace = OpTrace::begin("all_categories");
         let connection = self.guard();
         let mut statement = connection.prepare(
             "SELECT id, goal_id, name, created_at FROM categories
@@ -192,6 +209,7 @@ impl Store {
         for row in rows {
             categories.push(row?);
         }
+        trace.ok();
         Ok(categories)
     }
 
@@ -202,9 +220,10 @@ impl Store {
     /// 同目标下重名返回 [`DomainError::DuplicateName`]；分类不存在返回
     /// [`DomainError::NotFound`]。
     pub fn rename_category(&self, id: CategoryId, name: &str) -> Result<(), DomainError> {
+        let mut trace = OpTrace::begin("rename_category");
         let name = validate_name(name, "分类名称", MAX_CATEGORY_NAME)?;
         let connection = self.guard();
-        match connection.execute(
+        let outcome = match connection.execute(
             "UPDATE categories SET name = ?2 WHERE id = ?1 AND deleted_at IS NULL",
             params![id.0, name],
         ) {
@@ -218,7 +237,11 @@ impl Store {
                 name,
             }),
             Err(error) => Err(error.into()),
+        };
+        if outcome.is_ok() {
+            trace.ok();
         }
+        outcome
     }
 
     /// 软删除分类。
@@ -227,6 +250,7 @@ impl Store {
     ///
     /// 分类不存在时返回 [`DomainError::NotFound`]。
     pub fn delete_category(&self, id: CategoryId) -> Result<DeletionImpact, DomainError> {
+        let mut trace = OpTrace::begin("delete_category");
         let mut connection = self.guard();
         let transaction = connection.transaction()?;
         let impact = category_impact(&transaction, id.0)?;
@@ -252,6 +276,7 @@ impl Store {
             params![id.0],
         )?;
         transaction.commit()?;
+        trace.ok();
         Ok(impact)
     }
 }

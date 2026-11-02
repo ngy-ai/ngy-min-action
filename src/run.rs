@@ -4,25 +4,27 @@ use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::mpsc::channel;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use tracing::{info, warn};
 
 use ngy_min_action::app::{MinActionApp, TickEvent, WINDOW_SIZE, WINDOW_TITLE};
 use ngy_min_action::clock::{Clock, SystemClock};
-use ngy_min_action::common::{APP_DATA_DIR, TICK_INTERVAL_SECS};
+use ngy_min_action::common::{APP_DATA_DIR, TICK_INTERVAL_SECS, elapsed_ms};
 use ngy_min_action::store::Store;
 
 /// 业务逻辑入口。
 ///
 /// 出错时返回错误而不是自行记录，由 `main` 在边界处统一记录一次。
 pub(crate) fn run() -> Result<()> {
+    let started = Instant::now();
     let directory = data_directory();
     let Some(_instance) = acquire_instance(&directory)? else {
         warn!(
             op = "startup",
             result = "already_running",
+            elapsed_ms = elapsed_ms(started),
             "程序已在运行，本次启动退出"
         );
         return Ok(());
@@ -33,7 +35,12 @@ pub(crate) fn run() -> Result<()> {
     let ticks = spawn_ticker();
 
     let app = MinActionApp::new(store, clock, ticks)?;
-    info!(op = "startup", result = "ok", "界面已就绪");
+    info!(
+        op = "startup",
+        result = "ok",
+        elapsed_ms = elapsed_ms(started),
+        "界面已就绪"
+    );
 
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
@@ -80,16 +87,24 @@ fn acquire_instance(directory: &Path) -> Result<Option<File>> {
 /// 在后台线程启动 tokio 运行时，按固定间隔向界面投递 tick。
 fn spawn_ticker() -> std::sync::mpsc::Receiver<TickEvent> {
     let (sender, receiver) = channel();
-    std::thread::Builder::new()
+    let spawned = std::thread::Builder::new()
         .name("min-action-ticker".to_owned())
         .spawn(move || {
-            let Ok(runtime) = tokio::runtime::Builder::new_multi_thread()
+            let runtime = match tokio::runtime::Builder::new_multi_thread()
                 .worker_threads(1)
                 .enable_time()
                 .build()
-            else {
-                warn!(op = "ticker", result = "error", "后台运行时创建失败");
-                return;
+            {
+                Ok(runtime) => runtime,
+                Err(error) => {
+                    warn!(
+                        op = "ticker",
+                        result = "error",
+                        error = %error,
+                        "后台运行时创建失败，跨日检测不可用"
+                    );
+                    return;
+                }
             };
             runtime.block_on(async move {
                 let mut ticker = tokio::time::interval(Duration::from_secs(TICK_INTERVAL_SECS));
@@ -100,7 +115,14 @@ fn spawn_ticker() -> std::sync::mpsc::Receiver<TickEvent> {
                     }
                 }
             });
-        })
-        .ok();
+        });
+    if let Err(error) = spawned {
+        warn!(
+            op = "ticker",
+            result = "error",
+            error = %error,
+            "后台线程创建失败，跨日检测不可用"
+        );
+    }
     receiver
 }
