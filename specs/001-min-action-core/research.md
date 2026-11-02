@@ -35,15 +35,15 @@
 - **在 `update()` 里 `block_on`**：实现最短，但一次慢查询就掉帧，且与 FR-025「不抢占、不卡界面」冲突。
 - **纯 `std::thread`**：够用，但用户已明确要求用 tokio 管理并发，且 tokio 的 `time` 与任务取消能力在跨日调度上更省事。
 
-## D3. 存储：SQLite + `rusqlite` 0.41（bundled），同步调用走 `spawn_blocking`
+## D3. 存储：SQLite + `rusqlite` 0.41（bundled），同步调用
 
-**Decision**: 单文件 SQLite 数据库，驱动选 `rusqlite` 0.41 并开启 `bundled` 特性；所有数据库调用在 `tokio::task::spawn_blocking` 中执行，共享连接用 `Arc<Mutex<Connection>>` 串行化。
+**Decision**: 单文件 SQLite 数据库，驱动选 `rusqlite` 0.41 并开启 `bundled` 特性；所有数据库调用**同步执行**，共享连接用 `Arc<Mutex<Connection>>` 串行化。
 
 **Rationale**:
 
 - FR-011 的幂等与 FR-013 的截断都要求真正的事务语义，纯文件或 JSON 需要自己实现原子写入，成本高于直接上 SQLite。
 - `bundled` 把 SQLite 编进二进制，Windows 上不需要额外的 `sqlite3.dll`，符合「单文件分发」。
-- 本地单用户、数据量在万行以内，用异步驱动换来的并发收益为零；`spawn_blocking` 已足够把阻塞挡在异步线程之外。
+- 本地单用户、数据量在万行以内，用异步驱动换来的并发收益为零；单次查询在微秒级，同步调用已经足够，不需要把阻塞搬到别的线程。
 
 **Alternatives considered**:
 

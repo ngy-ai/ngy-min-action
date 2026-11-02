@@ -46,8 +46,8 @@ description: "Task list for 001-min-action-core"
 
 - [X] T004 [P] 先在 `tests/clock_test.rs` 写用例并运行到失败（本地日界在 00:00 切换、固定时钟推进一天后 `today()` 随之改变），再在 `src/clock.rs` 实现 `Clock` trait、`SystemClock`（`chrono::Local`）与测试用固定时钟；同时把 `chrono` 加入 `Cargo.toml`，与本次实现同批提交；文档注释写明「业务层禁止直接调用 `Local::now()`」
 - [X] T005 [P] 在 `src/store/schema.rs` 实现建表与迁移：`goals`、`categories`、`tasks`、`actions`、`review_progress`、`reminder_state`、`settings`、`action_settlements` 八张表；含三张实体表的 `deleted_at TEXT NULL` 软删除列、`UNIQUE(goal_id, name)`、`UNIQUE(task_id, on_date)`、`CHECK (id = 1)`、`review_progress` 与 `action_settlements` 的外键级联，而 `actions.task_id` **不级联**；启用 `journal_mode=WAL` 与 `foreign_keys=ON`；同时把 `rusqlite`（`bundled` 特性）加入 `Cargo.toml`
-- [X] T006 在 `src/store.rs` 实现 `Store::open(path)` 与迁移调用、`Arc<Mutex<Connection>>` 单一连接、`spawn_blocking` 包装与每方法一个事务的边界；路径不可写与 schema 版本超前时返回 `StoreError` 并给出可执行说明
-- [ ] T007 在 `tests/common/mod.rs` 建立共享夹具：临时目录 + 临时数据库（调用 T006 的 `Store::open`）+ 固定时钟，供各 `tests/*_test.rs` 用 `mod common;` 引入，测试文件之间不互相 `use`
+- [X] T006 在 `src/store.rs` 实现 `Store::open(path)` 与迁移调用、`Arc<Mutex<Connection>>` 单一连接与每方法一个事务的边界；路径不可写与 schema 版本超前时返回 `StoreError` 并给出可执行说明
+- [X] T007 把测试夹具内联到各 `tests/*_test.rs`：临时目录 + 临时数据库（调用 T006 的 `Store::open`）+ 固定时钟。**不引入 `tests/common/`**：每个测试文件都是独立 crate，共享模块里未被某个 crate 使用的辅助函数会触发 `dead_code`，而宪法禁止 `allow`/`expect` 之外的抑制
 - [X] T008 [P] 在 `src/app.rs` 实现界门外壳：`eframe` 启动、主窗口最小尺寸、状态条占位与左右分栏骨架；同时把 `eframe` 加入 `Cargo.toml`；确认关闭主窗口即退出程序、最小化后进程继续存活
 - [X] T009 在 `src/run.rs` 与 `src/main.rs` 完成编排：同时把 `tokio`（`rt-multi-thread`、`time`、`sync`）加入 `Cargo.toml`；按 `research.md` D7 在数据目录对 `app.lock` 取独占文件锁（取不到即退出本次启动，并提示「程序已在运行」，聚焦既有窗口只是尽力而为）、在后台线程启动 tokio 运行时、把运行时句柄与 `Store` 传入界面；保持 `src/main.rs` 中「错误只记一次」的边界，日志初始化失败仍只写 stderr
 
@@ -149,8 +149,8 @@ description: "Task list for 001-min-action-core"
 **Purpose**: 性能证据、日志一致性、文档与门禁
 
 - [ ] T033 [P] 在 `benches/plan_day.rs` 用 `criterion` 写 `plan_day` 在 200 任务输入下的微基准，并把 `criterion` 加入 `[dev-dependencies]`（与第一个基准同批提交）
-- [ ] T034 [P] 编写 `scripts/perf.ps1`：连续 20 次测量启动到可交互、跨日弹窗延迟、交互响应，并用 `Get-Process` 采样 `WorkingSet` 与空闲 CPU，输出 p95；结果填入 issue #1 的表格
-- [ ] T035 [P] 更新 `README.md`：说明这是 Windows 桌面常驻程序（`cargo run` 启动、关闭主窗口即退出、最小化继续驻留），替换现有 CLI 描述
+- [X] T034 [P] 编写 `scripts/perf.ps1`：连续 20 次测量启动到可交互、跨日弹窗延迟、交互响应，并用 `Get-Process` 采样 `WorkingSet` 与空闲 CPU，输出 p95；结果填入 issue #1 的表格
+- [X] T035 [P] 更新 `README.md`：说明这是 Windows 桌面常驻程序（`cargo run` 启动、关闭主窗口即退出、最小化继续驻留），替换现有 CLI 描述
 - [ ] T036 统一结构化日志：在 `src/store/*.rs`、`src/notify.rs`、`src/app.rs` 的操作边界补齐 `op` / `result` / `elapsed_ms` 字段，错误只在 `src/main.rs` 边界记一次，production 只写 JSON 文件且 stdout/stderr 洁净（宪法 VII）
 - [ ] T037 跑静态与测试门禁：按 `.github/workflows/ci.yml` 的六个门禁逐项执行，其中可本地复现的五项为 `cargo fmt --check`、`cargo clippy --all-targets --all-features -- -D warnings`、`cargo test --all-targets --all-features`、`cargo machete`、`cargo audit`，全部通过
 - [ ] T038 按 `quickstart.md` 手工走完五个验收场景（三层结构、每日最小行动、遗忘曲线、常驻弹窗、异常路径），逐条记录结果

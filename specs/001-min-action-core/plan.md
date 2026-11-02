@@ -16,7 +16,7 @@
 
 **Primary Dependencies**: `eframe` 0.37、`egui` 0.37、`tokio` 1.54（`time`、`sync`、`rt-multi-thread`）、`rusqlite` 0.41（`bundled`）、`chrono` 0.4、`tracing` 0.1、`anyhow` 1、`ngy-utils-tracing` 0.7；基准用 `criterion`（仅在写第一个基准时加入 `[dev-dependencies]`）
 
-**Storage**: 单文件 SQLite，`journal_mode=WAL`、`foreign_keys=ON`；所有访问经单一连接（`Arc<Mutex<Connection>>`）+ `spawn_blocking` 串行化
+**Storage**: 单文件 SQLite，`journal_mode=WAL`、`foreign_keys=ON`；所有访问经单一连接（`Arc<Mutex<Connection>>`）串行化，调用同步执行
 
 **Testing**: `cargo test --all-targets --all-features`；调度与复习为纯函数单测，存储与提示为 `tests/*_test.rs` 集成测试；性能用 `criterion` 与外部脚本
 
@@ -101,12 +101,12 @@ tests/
 ├── store_test.rs         # 唯一约束、软删除、事务回滚
 ├── schedule_test.rs      # 生成、截断、顺延、多日模拟
 ├── review_test.rs        # 遗忘曲线推进/回滚/毕业
-├── notify_test.rs        # 每日一次、重启不重复、跨日补发
-└── common/
-    └── mod.rs            # 临时库与固定时钟的共享夹具
+└── notify_test.rs        # 每日一次、重启不重复、跨日补发
 ```
 
 **Structure Decision**: 单 crate、两个 target（`lib` 提供可测的领域逻辑，`bin` 只做启动编排与界面装配）。模块根只放 `mod` 声明与再导出，共享类型与常量各自成文件，符合宪法「Rust 代码组织约定」。测试目录镜像 `src/<module>/`，跨模块的存储与提示测试留在 `tests/`。
+
+**测试夹具内联**：`tests/` 下每个文件是独立 crate，若抽出 `tests/common/mod.rs`，其中未被某个 crate 使用的辅助函数会触发 `dead_code`，而宪法 II 禁止 `allow` 抑制。因此夹具（临时目录、临时库、固定日期）在各测试文件内各自定义，重复量小且随文件本地化。
 
 ## Complexity Tracking
 
@@ -139,6 +139,8 @@ tests/
 | `deferred` 超过 7 天转 `expired` | 顺延若不设上限，连续多日不用会让待办无限堆积，与 FR-015「不倾倒积压」相悖；7 天是唯一常量，集中定义 |
 | 跨日检测用 2 秒轮询而非精确定时 | 睡眠唤醒与改系统时间会让精确定时失效；轮询直接满足 FR-029，代码更少（见 `research.md` D5） |
 | 界面契约靠手工验收，不做 GUI 自动化 | 宪法 III 第 4 条点名的是 CLI 命令与公共库 API，界面不在其列；桌面 GUI 的自动化测试成本远高于收益。界面行为由 `contracts/ui-contract.md` 固定，由 `quickstart.md` 的五个手工场景验收 |
+| `Store` 同步调用而非 `spawn_blocking` | 本地单用户 SQLite 的单次查询在微秒级，远低于 100ms 的交互预算；`spawn_blocking` 只会给每条读写加一次线程往返与额外的错误路径。实测若出现慢查询（issue #1 的交互响应指标会覆盖这一点）再引入 |
+| 测试夹具内联而不建 `tests/common/` | 测试文件各自是独立 crate，共享模块中未被某个 crate 使用的辅助函数会触发 `dead_code`，而宪法 II 禁止 `allow` 抑制 |
 
 ## Phase 完成情况
 
