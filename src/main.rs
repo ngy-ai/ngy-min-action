@@ -11,10 +11,10 @@
 use std::process::ExitCode;
 use std::time::Instant;
 
+use ngy_min_action::common;
 use ngy_utils_tracing::{InitOptions, init};
 use tracing::{error, info};
 
-mod common;
 mod run;
 
 fn main() -> ExitCode {

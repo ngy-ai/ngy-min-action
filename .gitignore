@@ -5,3 +5,7 @@
 /logs
 /TODO.md
 /github_token.txt
+
+# spec-kit 辅助脚本产生的缓存
+__pycache__/
+*.pyc
