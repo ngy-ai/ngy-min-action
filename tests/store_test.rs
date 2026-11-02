@@ -202,6 +202,21 @@ fn undo_restores_the_previous_state() {
 }
 
 #[test]
+fn only_settled_actions_offer_undo() {
+    assert!(ActionStatus::Done.is_settled());
+    assert!(ActionStatus::Skipped.is_settled());
+    assert!(!ActionStatus::Pending.is_settled(), "待完成没有结算记录");
+    assert!(
+        !ActionStatus::Deferred.is_settled(),
+        "顺延从未结算，界面上不能给撤销入口"
+    );
+    assert!(
+        !ActionStatus::Expired.is_settled(),
+        "过期从未结算，界面上不能给撤销入口"
+    );
+}
+
+#[test]
 fn daily_cap_setting_is_validated() {
     let store = open_store("daily-cap");
     assert_eq!(store.daily_cap().expect("默认上限"), 5);

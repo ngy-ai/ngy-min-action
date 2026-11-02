@@ -338,6 +338,15 @@ pub enum ActionStatus {
 }
 
 impl ActionStatus {
+    /// 该状态是否由一次结算产生，因而存在可撤销的快照。
+    ///
+    /// 只有完成与跳过会写入 `action_settlements`；顺延与过期从未结算，
+    /// 界面上不能给它们撤销入口。
+    #[must_use]
+    pub fn is_settled(self) -> bool {
+        matches!(self, ActionStatus::Done | ActionStatus::Skipped)
+    }
+
     /// 入库用的标签。
     #[must_use]
     pub fn as_str(self) -> &'static str {

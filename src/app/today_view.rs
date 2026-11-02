@@ -35,7 +35,8 @@ impl MinActionApp {
                                 }
                             } else {
                                 ui.label(status_text(action.status));
-                                if ui.small_button("撤销").clicked() {
+                                if action.status.is_settled() && ui.small_button("撤销").clicked()
+                                {
                                     undo = Some(action.id);
                                 }
                             }
