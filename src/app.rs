@@ -113,6 +113,7 @@ impl MinActionApp {
             popup: Arc::new(Mutex::new(PopupState::default())),
         };
         app.reload()?;
+        app.sync_popup();
         Ok(app)
     }
 
