@@ -85,7 +85,8 @@ fn candidate_for(
         return Some(Candidate {
             task_id: task.id,
             kind: ActionKind::Review,
-            review_level: Some(snapshot.level.saturating_add(1)),
+            // `level` 表示「当前处于第几级」，因此复习行动直接沿用，不再加一。
+            review_level: Some(snapshot.level.max(1)),
             due: Some(due),
         });
     }

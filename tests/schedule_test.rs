@@ -89,7 +89,11 @@ fn review_action_wins_over_regular_for_the_same_task() {
     });
     assert_eq!(plan.actions.len(), 1, "同一任务当天只上线一条行动");
     assert_eq!(plan.actions[0].kind, ActionKind::Review);
-    assert_eq!(plan.actions[0].review_level, Some(2));
+    assert_eq!(
+        plan.actions[0].review_level,
+        Some(1),
+        "进度里的 level 就是当前这一级，界面上不应再加一"
+    );
 }
 
 #[test]
