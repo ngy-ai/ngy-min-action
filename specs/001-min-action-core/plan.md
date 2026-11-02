@@ -97,9 +97,10 @@ src/
     └── constants.rs      # 环境前缀、遗忘曲线序列、默认上限
 
 tests/
-├── schedule_test.rs      # 生成、截断、顺延、幂等
+├── clock_test.rs         # FR-016 本地日界切换
+├── store_test.rs         # 唯一约束、软删除、事务回滚
+├── schedule_test.rs      # 生成、截断、顺延、多日模拟
 ├── review_test.rs        # 遗忘曲线推进/回滚/毕业
-├── store_test.rs         # 唯一约束、事务回滚、级联删除
 ├── notify_test.rs        # 每日一次、重启不重复、跨日补发
 └── common/
     └── mod.rs            # 临时库与固定时钟的共享夹具
@@ -137,6 +138,7 @@ tests/
 | ID 使用 newtype | 四个实体的 ID 底层同为整数，混用会静默写错行；包装编码了原语不具备的类型约束 |
 | `deferred` 超过 7 天转 `expired` | 顺延若不设上限，连续多日不用会让待办无限堆积，与 FR-015「不倾倒积压」相悖；7 天是唯一常量，集中定义 |
 | 跨日检测用 2 秒轮询而非精确定时 | 睡眠唤醒与改系统时间会让精确定时失效；轮询直接满足 FR-029，代码更少（见 `research.md` D5） |
+| 界面契约靠手工验收，不做 GUI 自动化 | 宪法 III 第 4 条点名的是 CLI 命令与公共库 API，界面不在其列；桌面 GUI 的自动化测试成本远高于收益。界面行为由 `contracts/ui-contract.md` 固定，由 `quickstart.md` 的五个手工场景验收 |
 
 ## Phase 完成情况
 

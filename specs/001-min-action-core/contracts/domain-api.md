@@ -97,6 +97,29 @@ impl Store {
     pub fn create_category(&self, goal: GoalId, name: &str) -> Result<CategoryId, DomainError>;
     pub fn create_task(&self, category: CategoryId, draft: TaskDraft) -> Result<TaskId, DomainError>;
 
+    pub fn rename_goal(&self, id: GoalId, name: &str) -> Result<(), DomainError>;
+    pub fn rename_category(&self, id: CategoryId, name: &str) -> Result<(), DomainError>;
+    pub fn rename_task(&self, id: TaskId, name: &str) -> Result<(), DomainError>;
+
+    /// 软删除目标，返回将被一并影响的分类/任务/未完成行动数量，供确认对话框展示。
+    pub fn delete_goal(&self, id: GoalId) -> Result<DeletionImpact, DomainError>;
+    pub fn delete_category(&self, id: CategoryId) -> Result<DeletionImpact, DomainError>;
+    pub fn delete_task(&self, id: TaskId) -> Result<(), DomainError>;
+
+    pub fn goals(&self) -> Result<Vec<Goal>, DomainError>;
+    pub fn categories(&self, goal: GoalId) -> Result<Vec<Category>, DomainError>;
+    pub fn tasks(&self, category: CategoryId) -> Result<Vec<Task>, DomainError>;
+
+    /// 暂停或恢复任务（FR-009）。恢复后不补生成暂停期间的行动。
+    pub fn set_task_status(&self, id: TaskId, status: TaskStatus) -> Result<(), DomainError>;
+
+    pub fn review_progress(&self, id: TaskId) -> Result<ReviewProgress, DomainError>;
+    pub fn reset_review_progress(&self, id: TaskId) -> Result<(), DomainError>;
+
+    pub fn actions_on(&self, today: NaiveDate) -> Result<Vec<Action>, DomainError>;
+    pub fn daily_cap(&self) -> Result<u8, DomainError>;
+    pub fn set_daily_cap(&self, cap: u8) -> Result<(), DomainError>;
+
     /// 当日生成，幂等。
     ///
     /// 输入：目标日期与上限。

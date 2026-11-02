@@ -21,7 +21,7 @@ reminder_state (单行)   settings (键值)
 
 **Validation**: 名称去首尾空白后非空；拒绝含换行、制表符与其他控制字符的输入（FR-033 / FR-004）。
 
-**删除语义**: 删除目标 → 级联删除其分类、任务、未完成行动与复习进度；`actions.status = 'done'` 的记录保留（FR-005），通过 `task_id` 置空或历史表二者取其一，见「删除与级联」。
+**删除语义**: 目标、分类、任务三张表均增加 `deleted_at TEXT NULL` 列，采用**软删除**——`deleted_at` 非空即视为已删除，列表查询与每日生成都过滤掉它。删除目标时其分类与任务一并软删除，其未完成行动转 `expired`；已完成行动与 `action_settlements` 全部保留，因此 `actions.task_id` 保持非空、**不设** `ON DELETE CASCADE`（FR-005）。`review_progress` 随任务一起失效，不做物理删除。
 
 ## 2. categories — 分类
 
@@ -61,7 +61,7 @@ reminder_state (单行)   settings (键值)
 | 列 | 类型 | 约束 | 来源 |
 | --- | --- | --- | --- |
 | `id` | INTEGER | PK AUTOINCREMENT | — |
-| `task_id` | INTEGER | NOT NULL, FK → tasks(id) | FR-010 |
+| `task_id` | INTEGER | NOT NULL, FK → tasks(id)，**不级联删除**（历史记录需保留） | FR-010 / FR-005 |
 | `on_date` | TEXT | NOT NULL, `YYYY-MM-DD` | FR-010 |
 | `kind` | TEXT | NOT NULL, `regular` \| `review` | FR-010 |
 | `review_level` | INTEGER | NULL；`kind = 'review'` 时非空，1..=6 | FR-010 / FR-019 |
@@ -76,14 +76,17 @@ reminder_state (单行)   settings (键值)
 
 ```text
 pending ──完成──> done        （FR-017，推进复习）
-pending ──跳过──> skipped     （FR-017，次日重新出现）
-pending ──超上限──> deferred  （FR-013，次日重新参与竞争）
-deferred ──次日入选──> pending
+pending ──跳过──> skipped     （FR-017，不推进复习；行动本身不再变状态）
+pending ──超上限──> deferred  （FR-013，仅作顺延记录）
 deferred ──保留超过 7 天──> expired（FR-015，避免积压无限增长）
 done ──撤销最近一次标记──> pending（FR-017）
 ```
 
-**顺延的表示**: `deferred` 行动不预先分配未来日期，而是在之后每天重新进入候选池参与竞争。这样「顺延一条」不会连带重排后续所有计划，也天然满足 FR-015（连续多日未使用时不倾倒积压）。
+**状态不回流**: `skipped` 与 `deferred` 行保持原日期与原状态，永不回到 `pending`。
+
+**重现与顺延靠新行**: 该任务在之后日期重新参与候选竞争——常规行动按 `is_due` 判定，复习行动按 `next_review_on <= today` 判定——入选时生成一条**新的** `pending` 行。`UNIQUE(task_id, on_date)` 仍保证同一天只有一行，历史行的状态因此不会被后续日期改写。
+
+**跳过与频率的关系**（FR-020）: 复习行动被跳过时 `next_review_on` 不推进，因此次日依旧到期，自然重现；常规行动按频率决定下一次，一次跳过不会把任务永久剔除。
 
 **过期策略**: `deferred` 超过 7 天转 `expired`，同时写一条 `warn` 日志。理由见 `plan.md` 复杂度追踪。
 
