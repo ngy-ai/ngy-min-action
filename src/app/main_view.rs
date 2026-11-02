@@ -83,25 +83,30 @@ impl MinActionApp {
                     if !expanded {
                         continue;
                     }
-                    if selected {
-                        if self.categories.is_empty() {
-                            ui.horizontal(|ui| {
-                                ui.add_space(40.0);
-                                ui.weak("这个目标下还没有分类。");
-                            });
-                        }
-                        for category in &self.categories {
-                            ui.horizontal(|ui| {
-                                ui.add_space(40.0);
-                                let picked = self.selected_category == Some(category.id);
-                                if ui.selectable_label(picked, &category.name).clicked() {
-                                    select_category = Some(category.id);
-                                }
-                                if ui.small_button("×").on_hover_text("删除分类").clicked() {
-                                    drop_category = Some(category.id);
-                                }
-                            });
-                        }
+
+                    let mut shown = 0_usize;
+                    for category in self
+                        .all_categories
+                        .iter()
+                        .filter(|category| category.goal_id == goal.id)
+                    {
+                        shown += 1;
+                        ui.horizontal(|ui| {
+                            ui.add_space(40.0);
+                            let picked = self.selected_category == Some(category.id);
+                            if ui.selectable_label(picked, &category.name).clicked() {
+                                select_category = Some(category.id);
+                            }
+                            if ui.small_button("×").on_hover_text("删除分类").clicked() {
+                                drop_category = Some(category.id);
+                            }
+                        });
+                    }
+                    if shown == 0 {
+                        ui.horizontal(|ui| {
+                            ui.add_space(40.0);
+                            ui.weak("这个目标下还没有分类。");
+                        });
                     }
                 }
             });
@@ -110,7 +115,9 @@ impl MinActionApp {
             self.root_collapsed = !self.root_collapsed;
         }
         if let Some(goal) = toggle_goal {
-            if !self.collapsed_goals.remove(&goal) {
+            if self.collapsed_goals.contains(&goal) {
+                self.collapsed_goals.remove(&goal);
+            } else {
                 self.collapsed_goals.insert(goal);
             }
         }
