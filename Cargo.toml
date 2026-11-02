@@ -12,3 +12,10 @@ ngy-utils-tracing = "0.7"
 rusqlite = { version = "0.41", features = ["bundled"] }
 tokio = { version = "1.54", features = ["rt-multi-thread", "time", "sync"] }
 tracing = "0.1"
+
+[dev-dependencies]
+criterion = "0.8"
+
+[[bench]]
+name = "plan_day"
+harness = false

@@ -148,7 +148,7 @@ description: "Task list for 001-min-action-core"
 
 **Purpose**: 性能证据、日志一致性、文档与门禁
 
-- [ ] T033 [P] 在 `benches/plan_day.rs` 用 `criterion` 写 `plan_day` 在 200 任务输入下的微基准，并把 `criterion` 加入 `[dev-dependencies]`（与第一个基准同批提交）
+- [X] T033 [P] 在 `benches/plan_day.rs` 用 `criterion` 写 `plan_day` 在 200 任务输入下的微基准，并把 `criterion` 加入 `[dev-dependencies]`（与第一个基准同批提交）
 - [X] T034 [P] 编写 `scripts/perf.ps1`：连续 20 次测量启动到可交互、跨日弹窗延迟、交互响应，并用 `Get-Process` 采样 `WorkingSet` 与空闲 CPU，输出 p95；结果填入 issue #1 的表格
 - [X] T035 [P] 更新 `README.md`：说明这是 Windows 桌面常驻程序（`cargo run` 启动、关闭主窗口即退出、最小化继续驻留），替换现有 CLI 描述
 - [ ] T036 统一结构化日志：在 `src/store/*.rs`、`src/notify.rs`、`src/app.rs` 的操作边界补齐 `op` / `result` / `elapsed_ms` 字段，错误只在 `src/main.rs` 边界记一次，production 只写 JSON 文件且 stdout/stderr 洁净（宪法 VII）
