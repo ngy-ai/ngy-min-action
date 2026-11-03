@@ -11,10 +11,10 @@
 use std::process::ExitCode;
 use std::time::Instant;
 
+use ngy_min_action::common;
 use ngy_utils_tracing::{InitOptions, init};
 use tracing::{error, info};
 
-mod common;
 mod run;
 
 fn main() -> ExitCode {
@@ -36,6 +36,8 @@ fn main() -> ExitCode {
     };
 
     info!(
+        op = "app_start",
+        result = "ok",
         mode = %logging.mode,
         version = env!("CARGO_PKG_VERSION"),
         "应用启动"
@@ -45,17 +47,19 @@ fn main() -> ExitCode {
     let exit_code = match run::run() {
         Ok(()) => {
             info!(
+                op = "app_exit",
                 result = "ok",
-                elapsed_ms = started.elapsed().as_millis() as u64,
+                elapsed_ms = common::elapsed_ms(started),
                 "应用退出"
             );
             ExitCode::SUCCESS
         }
         Err(error) => {
             error!(
+                op = "app_exit",
                 error = %error,
                 result = "error",
-                elapsed_ms = started.elapsed().as_millis() as u64,
+                elapsed_ms = common::elapsed_ms(started),
                 "应用异常退出"
             );
             ExitCode::FAILURE
