@@ -1,6 +1,6 @@
 //! 每日生成：候选收集、排序、双重上限截断。
 
-use crate::model::{ActionKind, ReviewProgress, Task, TaskId};
+use crate::model::{ActionKind, ActionStatus, ReviewProgress, Task, TaskId};
 use crate::schedule::{PlanInput, PlanOutput, PlannedAction, is_due};
 
 /// 计算某一天的完整生成方案。
@@ -8,7 +8,7 @@ use crate::schedule::{PlanInput, PlanOutput, PlannedAction, is_due};
 /// 保证：
 /// - 同一输入多次调用结果完全一致；
 /// - 同一任务在输出中最多出现一次，复习优先于常规；
-/// - 输出条数不超过 `daily_cap`，超出部分计入 `deferred`；
+/// - 输出条数与当天已有行动之和不超过 `daily_cap`，超出部分计入 `deferred`；
 /// - 当天已有行动的任务不会再次出现。
 #[must_use]
 pub fn plan_day(input: &PlanInput<'_>) -> PlanOutput {
@@ -34,7 +34,19 @@ pub fn plan_day(input: &PlanInput<'_>) -> PlanOutput {
             .then_with(|| left.task_id.cmp(&right.task_id))
     });
 
-    let cap = usize::from(input.daily_cap.max(1));
+    // 上限约束的是当天行动总数，已有行动先占掉名额；`deferred` / `expired`
+    // 只是记录，不进清单，因此不占位。
+    let occupied = input
+        .existing
+        .iter()
+        .filter(|action| {
+            !matches!(
+                action.status,
+                ActionStatus::Deferred | ActionStatus::Expired
+            )
+        })
+        .count();
+    let cap = usize::from(input.daily_cap.max(1)).saturating_sub(occupied);
     let mut actions = Vec::new();
     let mut deferred = Vec::new();
     for (index, candidate) in candidates.into_iter().enumerate() {

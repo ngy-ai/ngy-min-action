@@ -126,6 +126,46 @@ fn cap_truncates_and_reports_deferred_items() {
 }
 
 #[test]
+fn cap_counts_actions_already_on_the_day() {
+    let today = date(2026, 11, 2);
+    let tasks = vec![task(9, Frequency::Daily, None)];
+    let occupied: Vec<Action> = (1..=5).map(|id| existing(id, today)).collect();
+    let plan = plan_day(&PlanInput {
+        today,
+        daily_cap: 5,
+        tasks: &tasks,
+        progress: &[],
+        existing: &occupied,
+    });
+    assert!(
+        plan.actions.is_empty(),
+        "当天已有行动占满上限时，新候选必须顺延而不是插队"
+    );
+    assert_eq!(plan.deferred_count(), 1);
+}
+
+#[test]
+fn settled_actions_still_occupy_the_cap() {
+    let today = date(2026, 11, 2);
+    let tasks = vec![task(9, Frequency::Daily, None)];
+    let mut occupied: Vec<Action> = (1..=5).map(|id| existing(id, today)).collect();
+    for item in &mut occupied {
+        item.status = ActionStatus::Done;
+    }
+    let plan = plan_day(&PlanInput {
+        today,
+        daily_cap: 5,
+        tasks: &tasks,
+        progress: &[],
+        existing: &occupied,
+    });
+    assert!(
+        plan.actions.is_empty(),
+        "上限约束的是当天行动总数，已完成的行仍占名额"
+    );
+}
+
+#[test]
 fn review_actions_sort_before_regular_ones() {
     let today = date(2026, 11, 2);
     let tasks = vec![

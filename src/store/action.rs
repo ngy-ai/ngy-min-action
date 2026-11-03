@@ -64,7 +64,14 @@ impl Store {
 
             let stamp = now_rfc3339();
             let on_date = encode_date(today);
-            let mut seq = 0_i64;
+            // seq 只能往后接续，否则每次刷新都会把新行动插到清单前部。
+            let mut seq = i64::from(
+                existing
+                    .iter()
+                    .map(|action| action.seq)
+                    .max()
+                    .map_or(0, |max| max.saturating_add(1)),
+            );
             for planned in &plan.actions {
                 let inserted = transaction.execute(
                     "INSERT OR IGNORE INTO actions

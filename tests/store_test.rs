@@ -147,6 +147,60 @@ fn daily_cap_limits_generated_actions() {
 }
 
 #[test]
+fn adding_a_task_does_not_exceed_the_cap() {
+    let store = open_store("cap-late-task");
+    let goal = store.create_goal("学习英语", None).expect("创建目标");
+    let category = store.create_category(goal, "口语").expect("创建分类");
+    for index in 1..=5 {
+        store
+            .create_task(category, draft(&format!("任务{index}")))
+            .expect("创建任务");
+    }
+    let first = store.generate_day(date(2026, 11, 2), 5).expect("首次生成");
+    assert_eq!(first.len(), 5);
+
+    store
+        .create_task(category, draft("任务6"))
+        .expect("创建任务");
+    let after = store.generate_day(date(2026, 11, 2), 5).expect("再次生成");
+    let pending = after
+        .iter()
+        .filter(|item| item.status == ActionStatus::Pending)
+        .count();
+    assert_eq!(pending, 5, "当天已占满上限时，新增任务不得突破上限");
+    assert_eq!(
+        store.deferred_count(date(2026, 11, 2)).expect("顺延计数"),
+        1,
+        "被挡下的新任务应计入顺延"
+    );
+}
+
+#[test]
+fn new_actions_append_after_existing_seq() {
+    let store = open_store("seq-append");
+    let goal = store.create_goal("学习英语", None).expect("创建目标");
+    let category = store.create_category(goal, "口语").expect("创建分类");
+    for index in 1..=2 {
+        store
+            .create_task(category, draft(&format!("任务{index}")))
+            .expect("创建任务");
+    }
+    let first = store.generate_day(date(2026, 11, 2), 5).expect("首次生成");
+    let max_seq = first.iter().map(|item| item.seq).max().expect("应有行动");
+
+    store
+        .create_task(category, draft("任务3"))
+        .expect("创建任务");
+    let after = store.generate_day(date(2026, 11, 2), 5).expect("再次生成");
+    let appended = after.last().expect("应有行动");
+    assert!(
+        appended.seq > max_seq,
+        "新行动必须追加到清单末尾，实际 seq={}，已有最大 seq={max_seq}",
+        appended.seq
+    );
+}
+
+#[test]
 fn paused_task_produces_no_action() {
     let store = open_store("paused");
     let goal = store.create_goal("学习英语", None).expect("创建目标");
