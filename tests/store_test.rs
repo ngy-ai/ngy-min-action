@@ -494,6 +494,30 @@ fn blank_goal_names_are_rejected_without_writing() {
 }
 
 #[test]
+fn all_tasks_includes_paused_tasks_for_name_resolution() {
+    let store = open_store("all-tasks");
+    let goal = store.create_goal("学习英语", None).expect("创建目标");
+    let category = store.create_category(goal, "口语").expect("创建分类");
+    let task = store
+        .create_task(category, draft("连读"))
+        .expect("创建任务");
+    store
+        .set_task_status(task, TaskStatus::Paused)
+        .expect("暂停任务");
+    let names: Vec<String> = store
+        .all_tasks()
+        .expect("全部任务")
+        .into_iter()
+        .map(|item| item.name)
+        .collect();
+    assert_eq!(
+        names,
+        vec!["连读".to_string()],
+        "暂停任务的名称仍必须可解析，否则今日清单会退化为任务#N"
+    );
+}
+
+#[test]
 fn tasks_are_stored_with_their_frequency() {
     let store = open_store("task-frequency");
     let goal = store.create_goal("学习英语", None).expect("创建目标");
