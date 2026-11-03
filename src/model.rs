@@ -472,6 +472,15 @@ pub fn validate_name(raw: &str, field: &'static str, max: usize) -> Result<Strin
     Ok(trimmed.to_owned())
 }
 
+/// 计算名称的比较键：Unicode 默认大小写折叠。
+///
+/// 输入须已通过 [`validate_name`]，即两端空白已去除。纯函数：同一输入恒返回
+/// 同一输出，且对折叠结果再次折叠不变。
+#[must_use]
+pub fn fold_name(name: &str) -> String {
+    caseless::default_case_fold_str(name)
+}
+
 /// 校验预计耗时。
 ///
 /// # Errors
@@ -485,5 +494,31 @@ pub fn validate_estimated_minutes(minutes: Option<u16>) -> Result<Option<u16>, D
             field: "预计耗时",
             expected: format!("1 到 {MAX_ESTIMATED_MINUTES} 分钟，或留空；实际为 {value} 分钟"),
         }),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::fold_name;
+
+    #[test]
+    fn sharp_s_expands_under_full_case_folding() {
+        assert_eq!(fold_name("straße"), "strasse", "ß 必须按完整折叠展开为 ss");
+    }
+
+    #[test]
+    fn greek_upper_and_lower_fold_to_the_same_key() {
+        assert_eq!(fold_name("ΣΟΦΟΣ"), fold_name("σοφος"));
+    }
+
+    #[test]
+    fn chinese_names_survive_folding_unchanged() {
+        assert_eq!(fold_name("口语"), "口语");
+    }
+
+    #[test]
+    fn folding_is_idempotent() {
+        let once = fold_name("Straße");
+        assert_eq!(fold_name(&once), once);
     }
 }
