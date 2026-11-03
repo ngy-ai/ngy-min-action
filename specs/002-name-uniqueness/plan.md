@@ -109,4 +109,10 @@ Cargo.toml               # + caseless
 
 - **Phase 0**: [research.md](./research.md) —— 4 项决策，无遗留 NEEDS CLARIFICATION
 - **Phase 1**: [data-model.md](./data-model.md)、[contracts/domain-api.md](./contracts/domain-api.md)、[quickstart.md](./quickstart.md)
-- **Phase 2**: 待 `/speckit.tasks` 生成任务清单
+- **Phase 2**: [tasks.md](./tasks.md) —— T001–T023 全部完成
+
+### 验证记录
+
+- 迁移用例在清空逻辑缺失时失败过一次（`升级必须清空业务数据` 断言），实现后转绿
+- 复核唯一性用例有效性：把两个唯一索引临时降级为普通索引后，9 个用例全部失败，恢复后全通过
+- 用户设置随升级重置已由迁移用例的 `daily_cap() == 5` 断言守住（见 FR-008）

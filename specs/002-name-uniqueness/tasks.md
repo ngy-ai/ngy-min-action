@@ -125,7 +125,7 @@
 
 ## Phase 7: Polish & Cross-Cutting Concerns
 
-- [X] T021 回填 [contracts/domain-api.md](./contracts/domain-api.md) 中与实际实现不一致的细节（函数签名、文案、错误 `scope` 取值）
+- [X] T021 核对 [contracts/domain-api.md](./contracts/domain-api.md) 与实际实现是否一致（函数签名、文案、错误 `scope` 取值）；核对结论为一致，未做改动
 - [X] T022 按 [quickstart.md](./quickstart.md) 的六个场景做手工验收，重点确认 `ß` / `ΣΟΦΟΣ` 两条折叠反例
 - [X] T023 跑通 `cargo fmt --check`、`cargo clippy --all-targets --all-features -- -D warnings`、`cargo test --all-targets --all-features`，三条全绿后提交
 
