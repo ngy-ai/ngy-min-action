@@ -84,6 +84,22 @@ impl Store {
         Ok(())
     }
 
+    /// 预览删除目标时会一并影响的范围，供确认对话框展示。
+    ///
+    /// 只读，不修改任何数据；文案里的数量必须来自这里，而不是删除后才知道。
+    ///
+    /// # Errors
+    ///
+    /// 目标不存在时返回 [`DomainError::NotFound`]。
+    pub fn goal_deletion_impact(&self, id: GoalId) -> Result<DeletionImpact, DomainError> {
+        let mut trace = OpTrace::begin("goal_deletion_impact");
+        let connection = self.guard();
+        ensure_goal_exists(&connection, id.0)?;
+        let impact = goal_impact(&connection, id.0)?;
+        trace.ok();
+        Ok(impact)
+    }
+
     /// 软删除目标，返回将被一并影响的范围。
     ///
     /// 已完成的行动与结算记录全部保留，供历史查询。
@@ -244,6 +260,20 @@ impl Store {
         outcome
     }
 
+    /// 预览删除分类时会一并影响的范围，供确认对话框展示。
+    ///
+    /// # Errors
+    ///
+    /// 分类不存在时返回 [`DomainError::NotFound`]。
+    pub fn category_deletion_impact(&self, id: CategoryId) -> Result<DeletionImpact, DomainError> {
+        let mut trace = OpTrace::begin("category_deletion_impact");
+        let connection = self.guard();
+        ensure_category_exists(&connection, id.0)?;
+        let impact = category_impact(&connection, id.0)?;
+        trace.ok();
+        Ok(impact)
+    }
+
     /// 软删除分类。
     ///
     /// # Errors
@@ -314,8 +344,24 @@ fn ensure_goal_exists(connection: &rusqlite::Connection, id: i64) -> Result<(), 
     Ok(())
 }
 
+fn ensure_category_exists(connection: &rusqlite::Connection, id: i64) -> Result<(), DomainError> {
+    let found: Option<i64> = connection
+        .query_row(
+            "SELECT id FROM categories WHERE id = ?1 AND deleted_at IS NULL",
+            params![id],
+            |row| row.get(0),
+        )
+        .optional()?;
+    if found.is_none() {
+        return Err(DomainError::NotFound {
+            entity: "分类", id
+        });
+    }
+    Ok(())
+}
+
 fn goal_impact(
-    connection: &rusqlite::Transaction<'_>,
+    connection: &rusqlite::Connection,
     goal: i64,
 ) -> Result<DeletionImpact, DomainError> {
     let impact = connection.query_row(
@@ -335,7 +381,7 @@ fn goal_impact(
 }
 
 fn category_impact(
-    connection: &rusqlite::Transaction<'_>,
+    connection: &rusqlite::Connection,
     category: i64,
 ) -> Result<DeletionImpact, DomainError> {
     let impact = connection.query_row(

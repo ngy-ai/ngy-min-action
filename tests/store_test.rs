@@ -256,6 +256,40 @@ fn undo_restores_the_previous_state() {
 }
 
 #[test]
+fn deletion_impact_is_available_before_deleting() {
+    let store = open_store("impact");
+    let goal = store.create_goal("学习英语", None).expect("创建目标");
+    let category = store.create_category(goal, "口语").expect("创建分类");
+    store
+        .create_task(category, draft("每周学习一个连读"))
+        .expect("创建任务");
+    store.generate_day(date(2026, 11, 2), 5).expect("生成行动");
+
+    let impact = store
+        .goal_deletion_impact(goal)
+        .expect("删除前应能预览目标的影响范围");
+    assert_eq!(impact.categories, 1);
+    assert_eq!(impact.tasks, 1);
+    assert_eq!(impact.pending_actions, 1);
+    assert_eq!(
+        store.goals().expect("目标仍在").len(),
+        1,
+        "预览不得修改数据"
+    );
+    assert_eq!(
+        store.tasks(category).expect("任务仍在").len(),
+        1,
+        "预览不得修改数据"
+    );
+
+    let impact = store
+        .category_deletion_impact(category)
+        .expect("删除前应能预览分类的影响范围");
+    assert_eq!(impact.tasks, 1);
+    assert_eq!(impact.pending_actions, 1);
+}
+
+#[test]
 fn only_settled_actions_offer_undo() {
     assert!(ActionStatus::Done.is_settled());
     assert!(ActionStatus::Skipped.is_settled());

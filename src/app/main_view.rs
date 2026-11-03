@@ -4,8 +4,9 @@
 //! 避免「先选中目标才能建分类」这种隐式前置条件。
 
 use eframe::egui;
+use tracing::warn;
 
-use crate::app::MinActionApp;
+use crate::app::{MinActionApp, PendingDelete};
 use crate::model::{CategoryId, Frequency, GoalId, TaskDraft, TaskStatus};
 
 impl MinActionApp {
@@ -131,29 +132,118 @@ impl MinActionApp {
             self.refresh_scope();
         }
         if let Some(goal) = drop_goal {
-            self.collapsed_goals.remove(&goal);
-            self.apply(|app| {
-                app.store.delete_goal(goal).map(|impact| {
-                    format!(
-                        "已删除目标：分类 {} 个、任务 {} 个、未完成行动 {} 条",
-                        impact.categories, impact.tasks, impact.pending_actions
-                    )
-                })
-            });
+            self.request_delete(PendingDelete::Goal(goal));
         }
         if let Some(category) = drop_category {
-            self.apply(|app| {
-                app.store.delete_category(category).map(|impact| {
-                    format!(
-                        "已删除分类：任务 {} 个、未完成行动 {} 条",
-                        impact.tasks, impact.pending_actions
-                    )
-                })
-            });
+            self.request_delete(PendingDelete::Category(category));
         }
+    }
 
-        self.ui_new_goal_dialog(ui.ctx());
-        self.ui_new_category_dialog(ui.ctx());
+    /// 读取删除影响并打开确认对话框。
+    fn request_delete(&mut self, target: PendingDelete) {
+        let outcome = match target {
+            PendingDelete::Goal(goal) => self.store.goal_deletion_impact(goal),
+            PendingDelete::Category(category) => self.store.category_deletion_impact(category),
+        };
+        match outcome {
+            Ok(impact) => {
+                self.pending_delete = Some(target);
+                self.delete_impact = Some(impact);
+            }
+            Err(error) => {
+                warn!(
+                    op = "deletion_impact",
+                    result = "error",
+                    error = %error,
+                    "读取删除影响范围失败"
+                );
+                self.error = Some(error.to_string());
+            }
+        }
+    }
+
+    pub(crate) fn ui_delete_dialog(&mut self, ctx: &egui::Context) {
+        let Some(target) = self.pending_delete else {
+            return;
+        };
+        let impact = self.delete_impact.unwrap_or_default();
+
+        let mut confirm = false;
+        let mut cancel = false;
+
+        egui::Window::new(match target {
+            PendingDelete::Goal(_) => "删除目标",
+            PendingDelete::Category(_) => "删除分类",
+        })
+        .id(egui::Id::unique("dialog-delete"))
+        .collapsible(false)
+        .resizable(false)
+        .default_pos([320.0, 260.0])
+        .show(ctx, |ui| {
+            ui.set_width(360.0);
+            match target {
+                PendingDelete::Goal(_) => {
+                    ui.label(format!(
+                        "将一并删除 {} 个分类、{} 个任务、{} 条未完成行动。",
+                        impact.categories, impact.tasks, impact.pending_actions
+                    ));
+                }
+                PendingDelete::Category(_) => {
+                    ui.label(format!(
+                        "将一并删除 {} 个任务、{} 条未完成行动。",
+                        impact.tasks, impact.pending_actions
+                    ));
+                }
+            }
+            ui.weak("已完成的行动记录会保留。");
+            ui.add_space(12.0);
+            ui.horizontal(|ui| {
+                if ui.button("删除").clicked() {
+                    confirm = true;
+                }
+                if ui.button("取消").clicked() {
+                    cancel = true;
+                }
+            });
+        });
+
+        if confirm {
+            let hint = match target {
+                PendingDelete::Goal(goal) => self.apply(|app| {
+                    app.store.delete_goal(goal).map(|impact| {
+                        format!(
+                            "已删除目标：分类 {} 个、任务 {} 个、未完成行动 {} 条",
+                            impact.categories, impact.tasks, impact.pending_actions
+                        )
+                    })
+                }),
+                PendingDelete::Category(category) => self.apply(|app| {
+                    app.store.delete_category(category).map(|impact| {
+                        format!(
+                            "已删除分类：任务 {} 个、未完成行动 {} 条",
+                            impact.tasks, impact.pending_actions
+                        )
+                    })
+                }),
+            };
+            if hint.is_some() {
+                match target {
+                    PendingDelete::Goal(goal) => {
+                        self.collapsed_goals.remove(&goal);
+                    }
+                    PendingDelete::Category(category) => {
+                        if self.selected_category == Some(category) {
+                            self.selected_category = None;
+                        }
+                    }
+                }
+                self.pending_delete = None;
+                self.delete_impact = None;
+            }
+        } else if cancel {
+            self.pending_delete = None;
+            self.delete_impact = None;
+        }
     }
 
     pub(crate) fn ui_task_section(&mut self, ui: &mut egui::Ui) {
@@ -253,32 +343,36 @@ impl MinActionApp {
             .or(self.goals.first().map(|goal| goal.id));
     }
 
-    fn ui_new_goal_dialog(&mut self, ctx: &egui::Context) {
+    pub(crate) fn ui_new_goal_dialog(&mut self, ctx: &egui::Context) {
         if !self.show_new_goal {
             return;
         }
         let mut submit = false;
         let mut cancel = false;
 
-        egui::Modal::new(egui::Id::unique("dialog-new-goal")).show(ctx, |ui| {
-            ui.set_width(320.0);
-            ui.heading("新建目标");
-            ui.add_space(8.0);
-            ui.horizontal(|ui| {
-                ui.label("名称");
-                ui.text_edit_singleline(&mut self.draft_goal_name);
+        egui::Window::new("新建目标")
+            .id(egui::Id::unique("dialog-new-goal"))
+            .collapsible(false)
+            .resizable(false)
+            .default_pos([320.0, 220.0])
+            .show(ctx, |ui| {
+                ui.set_width(320.0);
+                ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    ui.label("名称");
+                    ui.text_edit_singleline(&mut self.draft_goal_name);
+                });
+                ui.weak("例如「学习英语」。目标下可以再建分类。");
+                ui.add_space(12.0);
+                ui.horizontal(|ui| {
+                    if ui.button("创建").clicked() {
+                        submit = true;
+                    }
+                    if ui.button("取消").clicked() {
+                        cancel = true;
+                    }
+                });
             });
-            ui.weak("例如「学习英语」。目标下可以再建分类。");
-            ui.add_space(12.0);
-            ui.horizontal(|ui| {
-                if ui.button("创建").clicked() {
-                    submit = true;
-                }
-                if ui.button("取消").clicked() {
-                    cancel = true;
-                }
-            });
-        });
 
         if submit {
             let name = self.draft_goal_name.clone();
@@ -299,7 +393,7 @@ impl MinActionApp {
         }
     }
 
-    fn ui_new_category_dialog(&mut self, ctx: &egui::Context) {
+    pub(crate) fn ui_new_category_dialog(&mut self, ctx: &egui::Context) {
         if !self.show_new_category {
             return;
         }
@@ -312,43 +406,47 @@ impl MinActionApp {
         let mut submit = false;
         let mut cancel = false;
 
-        egui::Modal::new(egui::Id::unique("dialog-new-category")).show(ctx, |ui| {
-            ui.set_width(320.0);
-            ui.heading("新建分类");
-            ui.add_space(8.0);
+        egui::Window::new("新建分类")
+            .id(egui::Id::unique("dialog-new-category"))
+            .collapsible(false)
+            .resizable(false)
+            .default_pos([320.0, 220.0])
+            .show(ctx, |ui| {
+                ui.set_width(320.0);
+                ui.add_space(8.0);
 
-            let selected_name = self
-                .draft_category_goal
-                .and_then(|id| self.goals.iter().find(|goal| goal.id == id))
-                .map_or_else(|| "请选择目标".to_owned(), |goal| goal.name.clone());
-            egui::ComboBox::from_label("归属目标")
-                .selected_text(selected_name)
-                .show_ui(ui, |ui| {
-                    for goal in &self.goals {
-                        ui.selectable_value(
-                            &mut self.draft_category_goal,
-                            Some(goal.id),
-                            &goal.name,
-                        );
+                let selected_name = self
+                    .draft_category_goal
+                    .and_then(|id| self.goals.iter().find(|goal| goal.id == id))
+                    .map_or_else(|| "请选择目标".to_owned(), |goal| goal.name.clone());
+                egui::ComboBox::from_label("归属目标")
+                    .selected_text(selected_name)
+                    .show_ui(ui, |ui| {
+                        for goal in &self.goals {
+                            ui.selectable_value(
+                                &mut self.draft_category_goal,
+                                Some(goal.id),
+                                &goal.name,
+                            );
+                        }
+                    });
+
+                ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    ui.label("名称");
+                    ui.text_edit_singleline(&mut self.draft_category_name);
+                });
+                ui.weak("例如「口语」。同一目标下分类名不能重复。");
+                ui.add_space(12.0);
+                ui.horizontal(|ui| {
+                    if ui.button("创建").clicked() {
+                        submit = true;
+                    }
+                    if ui.button("取消").clicked() {
+                        cancel = true;
                     }
                 });
-
-            ui.add_space(8.0);
-            ui.horizontal(|ui| {
-                ui.label("名称");
-                ui.text_edit_singleline(&mut self.draft_category_name);
             });
-            ui.weak("例如「口语」。同一目标下分类名不能重复。");
-            ui.add_space(12.0);
-            ui.horizontal(|ui| {
-                if ui.button("创建").clicked() {
-                    submit = true;
-                }
-                if ui.button("取消").clicked() {
-                    cancel = true;
-                }
-            });
-        });
 
         if submit {
             let Some(goal) = self.draft_category_goal else {

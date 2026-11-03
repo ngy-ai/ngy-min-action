@@ -18,7 +18,9 @@ use tracing::{debug, info, warn};
 
 use crate::clock::Clock;
 use crate::common::elapsed_ms;
-use crate::model::{Action, Category, CategoryId, Goal, GoalId, ReminderState, Task};
+use crate::model::{
+    Action, Category, CategoryId, DeletionImpact, Goal, GoalId, ReminderState, Task,
+};
 use crate::store::Store;
 
 /// 主窗口标题。
@@ -46,6 +48,15 @@ pub struct PopupState {
     pub dismissed: bool,
 }
 
+/// 等待用户确认的删除目标。
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum PendingDelete {
+    /// 待删除的目标。
+    Goal(GoalId),
+    /// 待删除的分类。
+    Category(CategoryId),
+}
+
 /// 应用状态。
 pub struct MinActionApp {
     pub(crate) store: Store,
@@ -69,6 +80,8 @@ pub struct MinActionApp {
     pub(crate) draft_category_goal: Option<GoalId>,
     pub(crate) collapsed_goals: HashSet<GoalId>,
     pub(crate) root_collapsed: bool,
+    pub(crate) pending_delete: Option<PendingDelete>,
+    pub(crate) delete_impact: Option<DeletionImpact>,
     pub(crate) error: Option<String>,
     pub(crate) ticks: Receiver<TickEvent>,
     pub(crate) popup: Arc<Mutex<PopupState>>,
@@ -108,6 +121,8 @@ impl MinActionApp {
             draft_category_goal: None,
             collapsed_goals: HashSet::new(),
             root_collapsed: false,
+            pending_delete: None,
+            delete_impact: None,
             error: None,
             ticks,
             popup: Arc::new(Mutex::new(PopupState::default())),
@@ -444,5 +459,9 @@ impl eframe::App for MinActionApp {
             }
             ctx.send_viewport_cmd_to(egui::ViewportId::ROOT, egui::ViewportCommand::Focus);
         }
+
+        self.ui_new_goal_dialog(&ctx);
+        self.ui_new_category_dialog(&ctx);
+        self.ui_delete_dialog(&ctx);
     }
 }
