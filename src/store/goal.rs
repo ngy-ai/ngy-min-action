@@ -4,16 +4,23 @@ use rusqlite::{OptionalExtension, params};
 
 use crate::model::{
     Category, CategoryId, DeletionImpact, DomainError, Goal, GoalId, MAX_CATEGORY_NAME,
-    MAX_DESCRIPTION, MAX_GOAL_NAME, validate_name,
+    MAX_DESCRIPTION, MAX_GOAL_NAME, fold_name, validate_name,
 };
 use crate::store::{OpTrace, Store, is_unique_violation, now_rfc3339};
+
+/// 目标重名时的作用域描述。
+const GOAL_SCOPE: &str = "目标名称必须唯一";
+
+/// 分类重名时的作用域描述。
+const CATEGORY_SCOPE: &str = "同一目标下的分类名称必须唯一";
 
 impl Store {
     /// 创建目标。
     ///
     /// # Errors
     ///
-    /// 名称为空、超长或含控制字符时返回 [`DomainError::InvalidName`]。
+    /// 名称为空、超长或含控制字符时返回 [`DomainError::InvalidName`]；与任一
+    /// 已有目标（含已删除）折叠后同名时返回 [`DomainError::DuplicateName`]。
     pub fn create_goal(
         &self,
         name: &str,
@@ -23,13 +30,22 @@ impl Store {
         let name = validate_name(name, "目标名称", MAX_GOAL_NAME)?;
         let description = normalize_description(description)?;
         let connection = self.guard();
-        connection.execute(
-            "INSERT INTO goals (name, description, created_at) VALUES (?1, ?2, ?3)",
-            params![name, description, now_rfc3339()],
-        )?;
-        let id = GoalId(connection.last_insert_rowid());
-        trace.ok();
-        Ok(id)
+        let outcome = match connection.execute(
+            "INSERT INTO goals (name, name_folded, description, created_at)
+             VALUES (?1, ?2, ?3, ?4)",
+            params![name, fold_name(&name), description, now_rfc3339()],
+        ) {
+            Ok(_) => Ok(GoalId(connection.last_insert_rowid())),
+            Err(error) if is_unique_violation(&error) => Err(DomainError::DuplicateName {
+                scope: GOAL_SCOPE,
+                name,
+            }),
+            Err(error) => Err(error.into()),
+        };
+        if outcome.is_ok() {
+            trace.ok();
+        }
+        outcome
     }
 
     /// 列出所有未删除的目标。
@@ -65,23 +81,32 @@ impl Store {
     /// # Errors
     ///
     /// 名称为空或超长时返回 [`DomainError::InvalidName`]；目标不存在时返回
-    /// [`DomainError::NotFound`]。
+    /// [`DomainError::NotFound`]；与其他目标折叠后同名时返回
+    /// [`DomainError::DuplicateName`]（与自身同名不算冲突）。
     pub fn rename_goal(&self, id: GoalId, name: &str) -> Result<(), DomainError> {
         let mut trace = OpTrace::begin("rename_goal");
         let name = validate_name(name, "目标名称", MAX_GOAL_NAME)?;
         let connection = self.guard();
-        let updated = connection.execute(
-            "UPDATE goals SET name = ?2 WHERE id = ?1 AND deleted_at IS NULL",
-            params![id.0, name],
-        )?;
-        if updated == 0 {
-            return Err(DomainError::NotFound {
+        let outcome = match connection.execute(
+            "UPDATE goals SET name = ?2, name_folded = ?3
+              WHERE id = ?1 AND deleted_at IS NULL",
+            params![id.0, name, fold_name(&name)],
+        ) {
+            Ok(0) => Err(DomainError::NotFound {
                 entity: "目标",
                 id: id.0,
-            });
+            }),
+            Ok(_) => Ok(()),
+            Err(error) if is_unique_violation(&error) => Err(DomainError::DuplicateName {
+                scope: GOAL_SCOPE,
+                name,
+            }),
+            Err(error) => Err(error.into()),
+        };
+        if outcome.is_ok() {
+            trace.ok();
         }
-        trace.ok();
-        Ok(())
+        outcome
     }
 
     /// 预览删除目标时会一并影响的范围，供确认对话框展示。
@@ -157,12 +182,13 @@ impl Store {
         let connection = self.guard();
         ensure_goal_exists(&connection, goal.0)?;
         let outcome = match connection.execute(
-            "INSERT INTO categories (goal_id, name, created_at) VALUES (?1, ?2, ?3)",
-            params![goal.0, name, now_rfc3339()],
+            "INSERT INTO categories (goal_id, name, name_folded, created_at)
+             VALUES (?1, ?2, ?3, ?4)",
+            params![goal.0, name, fold_name(&name), now_rfc3339()],
         ) {
             Ok(_) => Ok(CategoryId(connection.last_insert_rowid())),
             Err(error) if is_unique_violation(&error) => Err(DomainError::DuplicateName {
-                scope: "同一目标下的分类",
+                scope: CATEGORY_SCOPE,
                 name,
             }),
             Err(error) => Err(error.into()),
@@ -240,8 +266,9 @@ impl Store {
         let name = validate_name(name, "分类名称", MAX_CATEGORY_NAME)?;
         let connection = self.guard();
         let outcome = match connection.execute(
-            "UPDATE categories SET name = ?2 WHERE id = ?1 AND deleted_at IS NULL",
-            params![id.0, name],
+            "UPDATE categories SET name = ?2, name_folded = ?3
+              WHERE id = ?1 AND deleted_at IS NULL",
+            params![id.0, name, fold_name(&name)],
         ) {
             Ok(0) => Err(DomainError::NotFound {
                 entity: "分类",
@@ -249,7 +276,7 @@ impl Store {
             }),
             Ok(_) => Ok(()),
             Err(error) if is_unique_violation(&error) => Err(DomainError::DuplicateName {
-                scope: "同一目标下的分类",
+                scope: CATEGORY_SCOPE,
                 name,
             }),
             Err(error) => Err(error.into()),

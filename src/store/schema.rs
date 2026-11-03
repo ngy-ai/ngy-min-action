@@ -1,36 +1,49 @@
 //! 建表与迁移。
 //!
-//! 表的约束与 `specs/001-min-action-core/data-model.md` 一一对应；不在这里写业务规则，
-//! 业务规则在 `model` 与 `store` 的方法里。
+//! 表的约束与 `specs/002-name-uniqueness/data-model.md` 一一对应；不在这里写业务
+//! 规则，业务规则在 `model` 与 `store` 的方法里。
+
+use std::time::Instant;
 
 use rusqlite::Connection;
+use tracing::info;
+
+use crate::common::elapsed_ms;
 
 /// 当前期望的 schema 版本。
-pub(crate) const SCHEMA_VERSION: i64 = 1;
+///
+/// 1 → 2 的变更：目标与分类增加 `name_folded` 列，唯一性改由整表唯一索引承担。
+pub(crate) const SCHEMA_VERSION: i64 = 2;
 
 /// 建表语句。
 ///
-/// 三张实体表使用软删除（`deleted_at`），因此唯一性用**部分索引**表达：
-/// 只约束未删除的行，避免删掉「口语」之后无法再建同名分类。
+/// 形态以 `specs/002-name-uniqueness/data-model.md` 为准：名称判重落在
+/// `name_folded` 上的**整表**唯一索引，不带 `deleted_at IS NULL` 条件——
+/// 软删除不释放名称。
 const DDL: &str = r"
 CREATE TABLE IF NOT EXISTS goals (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     name        TEXT    NOT NULL,
+    name_folded TEXT    NOT NULL,
     description TEXT,
     created_at  TEXT    NOT NULL,
     deleted_at  TEXT
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_goals_name_folded
+    ON goals(name_folded);
+
 CREATE TABLE IF NOT EXISTS categories (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    goal_id    INTEGER NOT NULL REFERENCES goals(id) ON DELETE CASCADE,
-    name       TEXT    NOT NULL,
-    created_at TEXT    NOT NULL,
-    deleted_at TEXT
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    goal_id     INTEGER NOT NULL REFERENCES goals(id) ON DELETE CASCADE,
+    name        TEXT    NOT NULL,
+    name_folded TEXT    NOT NULL,
+    created_at  TEXT    NOT NULL,
+    deleted_at  TEXT
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_categories_live_name
-    ON categories(goal_id, name) WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_categories_goal_name_folded
+    ON categories(goal_id, name_folded);
 
 CREATE TABLE IF NOT EXISTS tasks (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -90,9 +103,96 @@ CREATE TABLE IF NOT EXISTS settings (
 );
 ";
 
-/// 应用建表语句并记录 schema 版本。
-pub(crate) fn apply(connection: &Connection) -> rusqlite::Result<()> {
-    connection.execute_batch(DDL)?;
-    connection.pragma_update(None, "user_version", SCHEMA_VERSION)?;
+/// 升级旧库时的清除顺序。
+///
+/// `foreign_keys=ON` 时父表不能先于子表删除，顺序颠倒会触发外键错误。
+const DROP_TABLES: &str = r"
+DROP TABLE IF EXISTS action_settlements;
+DROP TABLE IF EXISTS actions;
+DROP TABLE IF EXISTS review_progress;
+DROP TABLE IF EXISTS tasks;
+DROP TABLE IF EXISTS categories;
+DROP TABLE IF EXISTS goals;
+DROP TABLE IF EXISTS reminder_state;
+DROP TABLE IF EXISTS settings;
+";
+
+/// 建表与迁移的错误。
+#[derive(Debug)]
+pub(crate) enum SchemaError {
+    /// SQL 执行失败。
+    Sql(rusqlite::Error),
+    /// 库的架构版本高于程序支持的版本。
+    Newer {
+        /// 库里的版本。
+        found: i64,
+        /// 程序支持的版本。
+        supported: i64,
+    },
+}
+
+impl From<rusqlite::Error> for SchemaError {
+    fn from(error: rusqlite::Error) -> Self {
+        SchemaError::Sql(error)
+    }
+}
+
+impl std::fmt::Display for SchemaError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SchemaError::Sql(error) => write!(formatter, "{error}"),
+            SchemaError::Newer { found, supported } => write!(
+                formatter,
+                "数据库架构版本 {found} 高于程序支持的 {supported}，请升级程序，或换回产生该库的版本"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for SchemaError {}
+
+/// 按架构版本建表或升级。
+///
+/// # Errors
+///
+/// 建表或升级的 SQL 失败时返回 [`SchemaError::Sql`]；库的版本高于
+/// [`SCHEMA_VERSION`] 时返回 [`SchemaError::Newer`]，避免把新库按旧结构解读。
+pub(crate) fn apply(connection: &Connection) -> Result<(), SchemaError> {
+    let current: i64 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
+    match current {
+        0 => {
+            connection.execute_batch(DDL)?;
+            connection.pragma_update(None, "user_version", SCHEMA_VERSION)?;
+        }
+        SCHEMA_VERSION => {}
+        from if from < SCHEMA_VERSION => migrate(connection, from)?,
+        found => {
+            return Err(SchemaError::Newer {
+                found,
+                supported: SCHEMA_VERSION,
+            });
+        }
+    }
+    Ok(())
+}
+
+/// 把旧库清空并按新结构重建。
+///
+/// 清空不可逆，且必须整体成功：任一步失败都不改变库里的任何一个字节。
+fn migrate(connection: &Connection, from: i64) -> Result<(), SchemaError> {
+    let started = Instant::now();
+    let transaction = connection.unchecked_transaction()?;
+    transaction.execute_batch(DROP_TABLES)?;
+    transaction.execute_batch(DDL)?;
+    transaction.pragma_update(None, "user_version", SCHEMA_VERSION)?;
+    transaction.commit()?;
+    info!(
+        op = "store_migrate",
+        from,
+        to = SCHEMA_VERSION,
+        result = "ok",
+        elapsed_ms = elapsed_ms(started),
+        "旧库已清空并按新结构重建"
+    );
     Ok(())
 }
