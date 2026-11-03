@@ -93,7 +93,7 @@ impl std::fmt::Display for DomainError {
             }
             DomainError::DuplicateName { scope, name } => write!(
                 formatter,
-                "{scope} 下已存在名称「{name}」，请换一个名称或先删除原有的那一项"
+                "{scope}：已存在名称「{name}」，请换一个名称或先删除原有的那一项"
             ),
             DomainError::InvalidValue { field, expected } => {
                 write!(formatter, "{field} 不合法：期望 {expected}")

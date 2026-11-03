@@ -64,9 +64,10 @@ fn soft_deleted_category_disappears_from_lists() {
     let impact = store.delete_category(category).expect("删除分类");
     assert_eq!(impact.categories, 0);
     assert!(store.categories(goal).expect("列出分类").is_empty());
-    store
+    let error = store
         .create_category(goal, "口语")
-        .expect("删除后应允许重建同名分类");
+        .expect_err("软删除不释放名称，重建同名分类必须被拒绝");
+    assert!(matches!(error, DomainError::DuplicateName { .. }));
 }
 
 #[test]
@@ -312,4 +313,176 @@ fn daily_cap_setting_is_validated() {
     assert_eq!(store.daily_cap().expect("读取上限"), 3);
     assert!(store.set_daily_cap(0).is_err(), "0 必须被拒绝");
     assert!(store.set_daily_cap(21).is_err(), "超出上限必须被拒绝");
+}
+
+#[test]
+fn upgrading_an_old_database_clears_business_data() {
+    let dir = std::env::temp_dir().join(format!(
+        "ngy-min-action-test-{}-migrate",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    let path = dir.join("data.db");
+
+    {
+        let store = Store::open(&path).expect("创建库");
+        let goal = store.create_goal("学习英语", None).expect("创建目标");
+        let category = store.create_category(goal, "口语").expect("创建分类");
+        store
+            .create_task(category, draft("连读"))
+            .expect("创建任务");
+        store.generate_day(date(2026, 11, 2), 5).expect("生成行动");
+    }
+
+    {
+        let connection = rusqlite::Connection::open(&path).expect("打开旧库");
+        connection
+            .pragma_update(None, "user_version", 1_i64)
+            .expect("标记为旧版本");
+    }
+
+    let store = Store::open(&path).expect("旧库应能升级");
+    assert!(
+        store.goals().expect("列出目标").is_empty(),
+        "升级必须清空业务数据"
+    );
+    store.create_goal("学习英语", None).expect("升级后仍可写入");
+    assert_eq!(store.goals().expect("列出目标").len(), 1);
+
+    drop(store);
+    let reopened = Store::open(&path).expect("再次打开");
+    assert_eq!(
+        reopened.goals().expect("列出目标").len(),
+        1,
+        "升级只清空一次"
+    );
+}
+
+#[test]
+fn duplicate_goal_names_are_rejected() {
+    let store = open_store("dup-goal");
+    store.create_goal("学习英语", None).expect("首次创建目标");
+    let error = store
+        .create_goal("学习英语", None)
+        .expect_err("同名目标必须被拒绝");
+    assert!(matches!(error, DomainError::DuplicateName { .. }));
+    assert_eq!(store.goals().expect("列出目标").len(), 1, "失败不得落行");
+}
+
+#[test]
+fn goal_names_ignore_case_and_surrounding_spaces() {
+    let store = open_store("goal-case");
+    store
+        .create_goal("learning english", None)
+        .expect("首次创建目标");
+    assert!(
+        store.create_goal("Learning English", None).is_err(),
+        "只有大小写不同也算重名"
+    );
+    assert!(
+        store.create_goal("  learning english  ", None).is_err(),
+        "两端空白不构成差异"
+    );
+    assert_eq!(store.goals().expect("列出目标").len(), 1);
+}
+
+#[test]
+fn full_unicode_case_folding_catches_expansion_cases() {
+    let store = open_store("goal-unicode");
+    store.create_goal("straße", None).expect("首次创建目标");
+    assert!(
+        store.create_goal("STRASSE", None).is_err(),
+        "ß 折叠为 ss 后必须被判重"
+    );
+    store.create_goal("ΣΟΦΟΣ", None).expect("希腊字母目标");
+    assert!(
+        store.create_goal("σοφος", None).is_err(),
+        "希腊字母大小写必须折叠"
+    );
+}
+
+#[test]
+fn renaming_a_goal_to_an_existing_name_is_rejected() {
+    let store = open_store("goal-rename");
+    store.create_goal("学习英语", None).expect("创建目标");
+    let other = store.create_goal("日语", None).expect("创建目标");
+    let error = store
+        .rename_goal(other, "学习英语")
+        .expect_err("重命名到已有名称必须被拒绝");
+    assert!(matches!(error, DomainError::DuplicateName { .. }));
+    assert_eq!(
+        store
+            .goals()
+            .expect("列出目标")
+            .iter()
+            .filter(|goal| goal.name == "日语")
+            .count(),
+        1,
+        "原名称必须保持不变"
+    );
+}
+
+#[test]
+fn a_deleted_goal_name_cannot_be_reused() {
+    let store = open_store("goal-reuse");
+    let goal = store.create_goal("学习英语", None).expect("创建目标");
+    store.delete_goal(goal).expect("删除目标");
+    let error = store
+        .create_goal("学习英语", None)
+        .expect_err("软删除不释放名称");
+    assert!(matches!(error, DomainError::DuplicateName { .. }));
+}
+
+#[test]
+fn duplicate_category_names_are_rejected_within_a_goal() {
+    let store = open_store("dup-category-case");
+    let goal = store.create_goal("学习英语", None).expect("创建目标");
+    store.create_category(goal, "Listening").expect("创建分类");
+    assert!(
+        store.create_category(goal, "listening").is_err(),
+        "仅大小写不同的分类名必须被拒绝"
+    );
+    assert_eq!(store.categories(goal).expect("列出分类").len(), 1);
+}
+
+#[test]
+fn renaming_a_category_to_an_existing_name_is_rejected() {
+    let store = open_store("category-rename");
+    let goal = store.create_goal("学习英语", None).expect("创建目标");
+    store.create_category(goal, "口语").expect("创建分类");
+    let grammar = store.create_category(goal, "语法").expect("创建分类");
+    let error = store
+        .rename_category(grammar, "口语")
+        .expect_err("同目标下重命名必须被拒绝");
+    assert!(matches!(error, DomainError::DuplicateName { .. }));
+    assert_eq!(store.categories(goal).expect("列出分类").len(), 2);
+}
+
+#[test]
+fn names_are_stored_without_surrounding_spaces() {
+    let store = open_store("trim");
+    let goal = store.create_goal("  学习英语  ", None).expect("创建目标");
+    assert_eq!(store.goals().expect("列出目标")[0].name, "学习英语");
+    store.create_category(goal, "  口语  ").expect("创建分类");
+    assert_eq!(store.categories(goal).expect("列出分类")[0].name, "口语");
+}
+
+#[test]
+fn inner_spaces_are_preserved() {
+    let store = open_store("inner-space");
+    let goal = store.create_goal("学习英语", None).expect("创建目标");
+    store
+        .create_category(goal, "学习 英语")
+        .expect("创建带内部空格的分类");
+    store
+        .create_category(goal, "学习英语")
+        .expect("内部空格不同的名称是两条");
+    assert_eq!(store.categories(goal).expect("列出分类").len(), 2);
+}
+
+#[test]
+fn blank_goal_names_are_rejected_without_writing() {
+    let store = open_store("blank-goal");
+    assert!(store.create_goal("   ", None).is_err(), "纯空白必须被拒绝");
+    assert!(store.goals().expect("列出目标").is_empty(), "不得落行");
 }
