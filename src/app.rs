@@ -220,7 +220,7 @@ impl MinActionApp {
             None => Vec::new(),
         };
 
-        self.all_tasks = self.store.active_tasks()?;
+        self.all_tasks = self.store.all_tasks()?;
         self.all_categories = self.store.all_categories()?;
 
         self.actions = self.store.generate_day(self.today, self.daily_cap)?;

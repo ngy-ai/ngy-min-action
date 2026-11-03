@@ -89,19 +89,21 @@ impl Store {
         Ok(tasks)
     }
 
-    /// 列出所有未删除且未暂停的任务，供每日生成使用。
+    /// 列出所有未删除的任务（含暂停），供界面解析行动所属的任务与分类名称。
+    ///
+    /// 暂停只影响是否生成新行动，不影响既有行动的名称展示。
     ///
     /// # Errors
     ///
     /// 读写失败时返回 [`DomainError::Store`]。
-    pub fn active_tasks(&self) -> Result<Vec<Task>, DomainError> {
-        let mut trace = OpTrace::begin("active_tasks");
+    pub fn all_tasks(&self) -> Result<Vec<Task>, DomainError> {
+        let mut trace = OpTrace::begin("all_tasks");
         let connection = self.guard();
         let mut statement = connection.prepare(
             "SELECT id, category_id, name, freq_kind, freq_interval, estimated_minutes,
                     status, last_generated_on, created_at
                FROM tasks
-              WHERE deleted_at IS NULL AND status = 'active'
+              WHERE deleted_at IS NULL
               ORDER BY id",
         )?;
         let rows = statement.query_map([], map_task)?;
