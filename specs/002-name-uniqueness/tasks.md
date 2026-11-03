@@ -21,9 +21,9 @@
 
 **Purpose**: 引入折叠依赖并把折叠能力落成语义明确的函数
 
-- [ ] T001 在 `Cargo.toml` 的 `[dependencies]` 加入 `caseless = "0.2"`，运行 `cargo doc -p caseless --no-deps` 核对默认折叠函数的确切签名；若与 `research.md` D1 的预期不符，先在该文件记录原因并确定替代函数
-- [ ] T002 在 `src/model.rs` 的 `#[cfg(test)] mod tests` 写入 `fold_name` 用例：`ß → ss`、`ΣΟΦΟΣ` 与 `σοφος` 折叠后相等、中文与数字保持原样、对已折叠结果再次折叠不变（幂等）
-- [ ] T003 在 `src/model.rs` 实现 `pub fn fold_name(name: &str) -> String`，让 T002 转绿；契约注释写明「输入须已通过 `validate_name`，纯函数且幂等」
+- [X] T001 在 `Cargo.toml` 的 `[dependencies]` 加入 `caseless = "0.2"`，运行 `cargo doc -p caseless --no-deps` 核对默认折叠函数的确切签名；若与 `research.md` D1 的预期不符，先在该文件记录原因并确定替代函数
+- [X] T002 在 `src/model.rs` 的 `#[cfg(test)] mod tests` 写入 `fold_name` 用例：`ß → ss`、`ΣΟΦΟΣ` 与 `σοφος` 折叠后相等、中文与数字保持原样、对已折叠结果再次折叠不变（幂等）
+- [X] T003 在 `src/model.rs` 实现 `pub fn fold_name(name: &str) -> String`，让 T002 转绿；契约注释写明「输入须已通过 `validate_name`，纯函数且幂等」
 
 **Checkpoint**: 折叠函数可用于后续所有写入路径
 
@@ -35,9 +35,9 @@
 
 **⚠️ CRITICAL**: 本阶段完成前，任何用户故事都无法独立验收
 
-- [ ] T004 [P] 在 `src/store/schema.rs` 把 `SCHEMA_VERSION` 改为 2；`goals` 与 `categories` 增加 `name_folded TEXT NOT NULL`；删除 `idx_categories_live_name`，新增 `idx_goals_name_folded UNIQUE(goals.name_folded)` 与 `idx_categories_goal_name_folded UNIQUE(categories.goal_id, categories.name_folded)`（两者都不带 `WHERE deleted_at IS NULL`）
-- [ ] T005 在 `src/store/schema.rs` 把 `apply` 改为按 `PRAGMA user_version` 分支：`0` → 建表并写版本；`== 2` → 直接返回；其余版本暂时返回 `Migrate` 错误（由 T018 补齐）
-- [ ] T006 [P] 在 `src/store/goal.rs` 的四个写入语句中补 `name_folded` 列（值来自 `fold_name(&name)`），保证 DDL 的 `NOT NULL` 不被插入路径打破
+- [X] T004 [P] 在 `src/store/schema.rs` 把 `SCHEMA_VERSION` 改为 2；`goals` 与 `categories` 增加 `name_folded TEXT NOT NULL`；删除 `idx_categories_live_name`，新增 `idx_goals_name_folded UNIQUE(goals.name_folded)` 与 `idx_categories_goal_name_folded UNIQUE(categories.goal_id, categories.name_folded)`（两者都不带 `WHERE deleted_at IS NULL`）
+- [X] T005 在 `src/store/schema.rs` 把 `apply` 改为按 `PRAGMA user_version` 分支：`0` → 建表并写版本；`== 2` → 直接返回；其余版本暂时返回 `Migrate` 错误（由 T018 补齐）
+- [X] T006 [P] 在 `src/store/goal.rs` 的四个写入语句中补 `name_folded` 列（值来自 `fold_name(&name)`），保证 DDL 的 `NOT NULL` 不被插入路径打破
 
 **Checkpoint**: 新库可直接建出带唯一索引的结构，四个写入路径不再违反约束
 
@@ -53,14 +53,14 @@
 
 > 先写测试并运行到失败，再写实现（宪法 III）
 
-- [ ] T007 [US1] 在 `tests/store_test.rs` 追加用例：重名目标创建被拒且不落行、仅大小写不同的目标被拒（`Learning English` / `learning english`）、`straße` 与 `STRASSE` 被视为重名、`ΣΟΦΟΣ` 与 `σοφος` 被视为重名、重命名到已存在名称被拒、删除目标后同名不可重建
+- [X] T007 [US1] 在 `tests/store_test.rs` 追加用例：重名目标创建被拒且不落行、仅大小写不同的目标被拒（`Learning English` / `learning english`）、`straße` 与 `STRASSE` 被视为重名、`ΣΟΦΟΣ` 与 `σοφος` 被视为重名、重命名到已存在名称被拒、删除目标后同名不可重建
 
 ### Implementation for User Story 1
 
-- [ ] T008 [US1] 在 `src/store/goal.rs` 的 `create_goal` 把唯一冲突翻译为 `DuplicateName { scope: "目标名称必须唯一", name }`，错误路径不得留下任何行
-- [ ] T009 [US1] 在 `src/store/goal.rs` 的 `rename_goal` 同时更新 `name_folded`，并把唯一冲突翻译为同一 `scope`；与自身同名不算冲突
-- [ ] T010 [US1] 在 `src/model.rs` 把 `DomainError::DuplicateName` 的展示模板改为「{scope}：已存在名称「{name}」，请换一个名称或先删除原有的那一项」
-- [ ] T011 [US1] 在 `src/store/goal.rs` 把 `rename_category` 的 `scope` 改为「同一目标下的分类名称必须唯一」，并同步调整既有断言中依赖旧文案的用例
+- [X] T008 [US1] 在 `src/store/goal.rs` 的 `create_goal` 把唯一冲突翻译为 `DuplicateName { scope: "目标名称必须唯一", name }`，错误路径不得留下任何行
+- [X] T009 [US1] 在 `src/store/goal.rs` 的 `rename_goal` 同时更新 `name_folded`，并把唯一冲突翻译为同一 `scope`；与自身同名不算冲突
+- [X] T010 [US1] 在 `src/model.rs` 把 `DomainError::DuplicateName` 的展示模板改为「{scope}：已存在名称「{name}」，请换一个名称或先删除原有的那一项」
+- [X] T011 [US1] 在 `src/store/goal.rs` 把 `rename_category` 的 `scope` 改为「同一目标下的分类名称必须唯一」，并同步调整既有断言中依赖旧文案的用例
 
 **Checkpoint**: 目标的创建与重命名具备唯一性约束，MVP 可验收
 
@@ -74,12 +74,12 @@
 
 ### Tests for User Story 2 ⚠️
 
-- [ ] T012 [US2] 在 `tests/store_test.rs` 追加用例：同一目标下重名分类被拒、仅大小写不同的分类名被拒、跨目标同名分类允许、分类重命名冲突被拒、删除分类后同目标下不可重建；并把既有 `soft_deleted_category_disappears_from_lists` 中「删除后应允许重建同名分类」改为反向断言
+- [X] T012 [US2] 在 `tests/store_test.rs` 追加用例：同一目标下重名分类被拒、仅大小写不同的分类名被拒、跨目标同名分类允许、分类重命名冲突被拒、删除分类后同目标下不可重建；并把既有 `soft_deleted_category_disappears_from_lists` 中「删除后应允许重建同名分类」改为反向断言
 
 ### Implementation for User Story 2
 
-- [ ] T013 [US2] 在 `src/store/goal.rs` 的 `create_category` 翻译唯一冲突为 `DuplicateName { scope: "同一目标下的分类名称必须唯一", name }`
-- [ ] T014 [US2] 在 `src/store/goal.rs` 的 `rename_category` 更新 `name_folded` 并沿用上述 `scope`（T011 已改文案）
+- [X] T013 [US2] 在 `src/store/goal.rs` 的 `create_category` 翻译唯一冲突为 `DuplicateName { scope: "同一目标下的分类名称必须唯一", name }`
+- [X] T014 [US2] 在 `src/store/goal.rs` 的 `rename_category` 更新 `name_folded` 并沿用上述 `scope`（T011 已改文案）
 
 **Checkpoint**: US1 与 US2 均独立可用，作用域边界（全局 / 目标内）可分别验证
 
@@ -93,11 +93,11 @@
 
 ### Tests for User Story 3 ⚠️
 
-- [ ] T015 [P] [US3] 在 `tests/store_test.rs` 追加用例：两端空白被去除后入库、纯空白被拒且不落行、内部空白原样保留（「学习 英语」与「学习英语」不判重）
+- [X] T015 [P] [US3] 在 `tests/store_test.rs` 追加用例：两端空白被去除后入库、纯空白被拒且不落行、内部空白原样保留（「学习 英语」与「学习英语」不判重）
 
 ### Implementation for User Story 3
 
-- [ ] T016 [US3] 核对 `src/model.rs::validate_name` 现有的 `trim` 行为是否已满足 T015；若已满足，仅保留测试并在任务说明中记录「既有实现已符合，本次为回归护栏」；若不满足才修改实现（宪法 III 只对新增生产代码要求先失败）
+- [X] T016 [US3] 核对 `src/model.rs::validate_name` 现有的 `trim` 行为是否已满足 T015；若已满足，仅保留测试并在任务说明中记录「既有实现已符合，本次为回归护栏」；若不满足才修改实现（宪法 III 只对新增生产代码要求先失败）
 
 **Checkpoint**: 空白噪音不再绕过唯一性判定
 
@@ -111,13 +111,13 @@
 
 ### Tests for User Story 4 ⚠️
 
-- [ ] T017 [US4] 在 `tests/store_test.rs` 追加迁移用例：用 `Store::open` 建库并写入目标 → drop → 用 `rusqlite::Connection` 把 `user_version` 设为 1 → 重新 `Store::open`，断言目标、分类、任务、行动全为空且可正常写入；再次 `Store::open` 断言数据保留（不重复清空）
+- [X] T017 [US4] 在 `tests/store_test.rs` 追加迁移用例：用 `Store::open` 建库并写入目标 → drop → 用 `rusqlite::Connection` 把 `user_version` 设为 1 → 重新 `Store::open`，断言目标、分类、任务、行动全为空且可正常写入；再次 `Store::open` 断言数据保留（不重复清空）
 
 ### Implementation for User Story 4
 
-- [ ] T018 [US4] 在 `src/store/schema.rs` 补齐 T005 留下的迁移分支：`0 < user_version < 2` 时在单个事务内按 `action_settlements → actions → review_progress → tasks → categories → goals → reminder_state → settings` 顺序 `DROP TABLE IF EXISTS`，再执行 DDL，最后写 `user_version = 2`；失败整体回滚
-- [ ] T019 [US4] 在 `src/store/schema.rs` 的迁移路径记录一条结构化日志：`op = "store_migrate"`、`from`、`to`、`result`、`elapsed_ms`
-- [ ] T020 [US4] 在 `src/store.rs` 确认升级失败的映射仍为 `StoreError::Migrate` 且不改变原库内容，必要时补充错误上下文
+- [X] T018 [US4] 在 `src/store/schema.rs` 补齐 T005 留下的迁移分支：`0 < user_version < 2` 时在单个事务内按 `action_settlements → actions → review_progress → tasks → categories → goals → reminder_state → settings` 顺序 `DROP TABLE IF EXISTS`，再执行 DDL，最后写 `user_version = 2`；失败整体回滚
+- [X] T019 [US4] 在 `src/store/schema.rs` 的迁移路径记录一条结构化日志：`op = "store_migrate"`、`from`、`to`、`result`、`elapsed_ms`
+- [X] T020 [US4] 在 `src/store.rs` 确认升级失败的映射仍为 `StoreError::Migrate` 且不改变原库内容，必要时补充错误上下文
 
 **Checkpoint**: 升级路径不再表现为启动失败，且清空只发生一次
 
@@ -125,9 +125,9 @@
 
 ## Phase 7: Polish & Cross-Cutting Concerns
 
-- [ ] T021 回填 [contracts/domain-api.md](./contracts/domain-api.md) 中与实际实现不一致的细节（函数签名、文案、错误 `scope` 取值）
-- [ ] T022 按 [quickstart.md](./quickstart.md) 的六个场景做手工验收，重点确认 `ß` / `ΣΟΦΟΣ` 两条折叠反例
-- [ ] T023 跑通 `cargo fmt --check`、`cargo clippy --all-targets --all-features -- -D warnings`、`cargo test --all-targets --all-features`，三条全绿后提交
+- [X] T021 回填 [contracts/domain-api.md](./contracts/domain-api.md) 中与实际实现不一致的细节（函数签名、文案、错误 `scope` 取值）
+- [X] T022 按 [quickstart.md](./quickstart.md) 的六个场景做手工验收，重点确认 `ß` / `ΣΟΦΟΣ` 两条折叠反例
+- [X] T023 跑通 `cargo fmt --check`、`cargo clippy --all-targets --all-features -- -D warnings`、`cargo test --all-targets --all-features`，三条全绿后提交
 
 ---
 
