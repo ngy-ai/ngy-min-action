@@ -332,6 +332,7 @@ fn upgrading_an_old_database_clears_business_data() {
             .create_task(category, draft("连读"))
             .expect("创建任务");
         store.generate_day(date(2026, 11, 2), 5).expect("生成行动");
+        store.set_daily_cap(3).expect("设置每日上限");
     }
 
     {
@@ -345,6 +346,11 @@ fn upgrading_an_old_database_clears_business_data() {
     assert!(
         store.goals().expect("列出目标").is_empty(),
         "升级必须清空业务数据"
+    );
+    assert_eq!(
+        store.daily_cap().expect("读取上限"),
+        5,
+        "用户设置随升级重置为默认值"
     );
     store.create_goal("学习英语", None).expect("升级后仍可写入");
     assert_eq!(store.goals().expect("列出目标").len(), 1);
