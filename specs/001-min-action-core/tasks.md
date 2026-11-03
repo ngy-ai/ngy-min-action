@@ -75,6 +75,8 @@ description: "Task list for 001-min-action-core"
 - [X] T014 [US1] 在 `src/app/main_view.rs` 实现左栏目标/分类树与右栏任务列表，含新建与重命名表单、内联错误文案（紧贴输入项，按「哪个输入 / 期望 / 如何修正」组织）、任务行的暂停/恢复开关，以及展示层对超长名称的截断与清洗（FR-033）
 - [X] T015 [US1] 在 `src/app.rs` 接线：启动加载树、提交后刷新、删除前用 `DeletionImpact` 展示将被一并影响的分类/任务/未完成行动数量并要求确认
 
+> **覆盖缺口（2026-11-03 手工验收发现）**：`quickstart.md` 场景 1 要求创建任务时可选频率（「每周一次」），但本阶段没有任何任务描述「新建任务表单的频率选择」，`src/app/main_view.rs` 固定以 `Frequency::Daily` 提交，任务行也不显示频率。该交互在实现与任务清单中同时缺失，需单独立项补齐。
+
 **Checkpoint**: 三层结构可独立跑通并要求删除确认 —— MVP 达成
 
 ---
@@ -119,6 +121,7 @@ description: "Task list for 001-min-action-core"
 - [X] T026 [US3] 在 `src/store/action.rs` 实现 `settle_action`（完成 / 跳过）与 `undo_last_settlement`：完成推进复习、跳过不推进，每次结算把变更前的复习快照写入 `action_settlements`，撤销时回放最近一条
 - [X] T027 [US3] 在 `src/app/today_view.rs` 增加行动行的「完成」「跳过」与撤销入口，并在复习行动上显示当前级别
 - [X] T028 [US3] 在 `src/app/main_view.rs` 增加任务行的复习进度展示（当前级别 + 下次复习日 + 是否已巩固）与「重置复习进度」入口
+  - ⚠️ 2026-11-03 手工验收发现：只实现了「重置复习」入口，任务行未展示级别、下次复习日与是否已巩固，本任务未完全落地
 
 **Checkpoint**: 记忆闭环可验证，三个故事互不破坏
 
@@ -153,7 +156,12 @@ description: "Task list for 001-min-action-core"
 - [X] T035 [P] 更新 `README.md`：说明这是 Windows 桌面常驻程序（`cargo run` 启动、关闭主窗口即退出、最小化继续驻留），替换现有 CLI 描述
 - [X] T036 统一结构化日志：在 `src/store/*.rs`、`src/notify.rs`、`src/app.rs` 的操作边界补齐 `op` / `result` / `elapsed_ms` 字段，错误只在 `src/main.rs` 边界记一次，production 只写 JSON 文件且 stdout/stderr 洁净（宪法 VII）
 - [X] T037 跑静态与测试门禁：按 `.github/workflows/ci.yml` 的六个门禁逐项执行，其中可本地复现的五项为 `cargo fmt --check`、`cargo clippy --all-targets --all-features -- -D warnings`、`cargo test --all-targets --all-features`、`cargo machete`、`cargo audit`，全部通过
-- [ ] T038 按 `quickstart.md` 手工走完五个验收场景（三层结构、每日最小行动、遗忘曲线、常驻弹窗、异常路径），逐条记录结果
+- [X] T038 按 `quickstart.md` 手工走完五个验收场景（三层结构、每日最小行动、遗忘曲线、常驻弹窗、异常路径），逐条记录如下（2026-11-03）
+  - **场景 1**：目标「学习英语」与 6 个分类按创建顺序展示 ✅；任务「每周学习一个连读」创建成功，但界面**没有频率选择控件**（新增任务固定为每天），任务行也**不显示频率** ⚠️；同目标重名分类被拒并给出可执行文案 ✅
+  - **场景 2**：上限 5 + 8 个每天任务 → 5 条待完成与「已顺延 3 条」✅；重启后仍是同一批 5 条，无重复 ✅
+  - **场景 3**：完成一条行动后待完成 5 → 4 并出现「撤销」✅；任务行**不显示复习级别、下次复习日与是否已巩固** ❌（T028 未完全落地）；跨日两步未执行，改由 `tests/review_test.rs` 覆盖
+  - **场景 4**：有 5 条待办时启动弹出置顶窗口「今天有 5 条最小行动待完成」✅；空数据启动不弹 ✅；跨日步骤未执行，改由 `tests/notify_test.rs` 覆盖
+  - **场景 5**：纯空格与超过 80 字符的名称均被拒，文案指出字段与修正方式 ✅；换行无法通过单行输入框录入 ✅；删除数据库后重启静默重建空库、无错误说明 ⚠️（已知偏差）；第二实例退出、未出现第二个窗口 ✅，但不聚焦已有窗口（已知偏差）
 - [ ] T039 按阶段拆分提交并写 PR 描述：说明为什么改、链接 `specs/001-min-action-core/plan.md` 与 `spec.md`、列出原则 V 预算例外与 `TODO(#1)`、附单开发者仓库条款的自我证明
 
 ---
