@@ -19,7 +19,7 @@ use tracing::{debug, info, warn};
 use crate::clock::Clock;
 use crate::common::elapsed_ms;
 use crate::model::{
-    Action, Category, CategoryId, DeletionImpact, Goal, GoalId, ReminderState, Task,
+    Action, Category, CategoryId, DeletionImpact, Goal, GoalId, ReminderState, ReviewProgress, Task,
 };
 use crate::store::Store;
 
@@ -57,6 +57,46 @@ pub(crate) enum PendingDelete {
     Category(CategoryId),
 }
 
+/// 新建任务时可选的频率模式。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FrequencyMode {
+    /// 每天。
+    Daily,
+    /// 每 N 天。
+    EveryNDays,
+    /// 每周 N 次。
+    WeeklyN,
+}
+
+impl FrequencyMode {
+    /// 切换到该模式时参数输入框的默认值。
+    pub(crate) fn default_interval(self) -> &'static str {
+        match self {
+            FrequencyMode::Daily => "",
+            FrequencyMode::EveryNDays => "3",
+            FrequencyMode::WeeklyN => "2",
+        }
+    }
+
+    /// 参数输入框前的说明文字。
+    pub(crate) fn interval_label(self) -> &'static str {
+        match self {
+            FrequencyMode::Daily => "",
+            FrequencyMode::EveryNDays => "间隔天数",
+            FrequencyMode::WeeklyN => "每周次数",
+        }
+    }
+
+    /// 交给 `Frequency::from_parts` 的类型标签。
+    pub(crate) fn kind(self) -> &'static str {
+        match self {
+            FrequencyMode::Daily => "daily",
+            FrequencyMode::EveryNDays => "every_n_days",
+            FrequencyMode::WeeklyN => "weekly_n",
+        }
+    }
+}
+
 /// 应用状态。
 pub struct MinActionApp {
     pub(crate) store: Store,
@@ -73,6 +113,9 @@ pub struct MinActionApp {
     pub(crate) selected_goal: Option<GoalId>,
     pub(crate) selected_category: Option<CategoryId>,
     pub(crate) new_task: String,
+    pub(crate) new_task_mode: FrequencyMode,
+    pub(crate) new_task_interval: String,
+    pub(crate) task_progress: Vec<ReviewProgress>,
     pub(crate) show_new_goal: bool,
     pub(crate) show_new_category: bool,
     pub(crate) draft_goal_name: String,
@@ -114,6 +157,9 @@ impl MinActionApp {
             selected_goal: None,
             selected_category: None,
             new_task: String::new(),
+            new_task_mode: FrequencyMode::Daily,
+            new_task_interval: String::new(),
+            task_progress: Vec::new(),
             show_new_goal: false,
             show_new_category: false,
             draft_goal_name: String::new(),
@@ -167,6 +213,10 @@ impl MinActionApp {
 
         self.tasks = match self.selected_category {
             Some(category) => self.store.tasks(category)?,
+            None => Vec::new(),
+        };
+        self.task_progress = match self.selected_category {
+            Some(category) => self.store.progress_for_category(category)?,
             None => Vec::new(),
         };
 

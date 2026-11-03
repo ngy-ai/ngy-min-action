@@ -492,3 +492,69 @@ fn blank_goal_names_are_rejected_without_writing() {
     assert!(store.create_goal("   ", None).is_err(), "纯空白必须被拒绝");
     assert!(store.goals().expect("列出目标").is_empty(), "不得落行");
 }
+
+#[test]
+fn tasks_are_stored_with_their_frequency() {
+    let store = open_store("task-frequency");
+    let goal = store.create_goal("学习英语", None).expect("创建目标");
+    let category = store.create_category(goal, "口语").expect("创建分类");
+    store
+        .create_task(
+            category,
+            TaskDraft {
+                name: "隔三天".to_string(),
+                frequency: Frequency::EveryNDays(3),
+                estimated_minutes: None,
+            },
+        )
+        .expect("创建任务");
+    store
+        .create_task(
+            category,
+            TaskDraft {
+                name: "每周两次".to_string(),
+                frequency: Frequency::WeeklyN(2),
+                estimated_minutes: None,
+            },
+        )
+        .expect("创建任务");
+    let tasks = store.tasks(category).expect("列出任务");
+    assert_eq!(tasks[0].frequency, Frequency::EveryNDays(3));
+    assert_eq!(tasks[1].frequency, Frequency::WeeklyN(2));
+}
+
+#[test]
+fn progress_for_category_returns_progress_of_live_tasks_only() {
+    let store = open_store("progress-batch");
+    let goal = store.create_goal("学习英语", None).expect("创建目标");
+    let category = store.create_category(goal, "口语").expect("创建分类");
+    assert!(
+        store
+            .progress_for_category(category)
+            .expect("空分类")
+            .is_empty(),
+        "空分类应返回空向量"
+    );
+
+    let task = store
+        .create_task(category, draft("连读"))
+        .expect("创建任务");
+    let actions = store.generate_day(date(2026, 11, 2), 5).expect("生成行动");
+    store
+        .settle_action(actions[0].id, ActionStatus::Done)
+        .expect("完成行动");
+
+    let progress = store.progress_for_category(category).expect("读取进度");
+    assert_eq!(progress.len(), 1);
+    assert_eq!(progress[0].task_id, task);
+    assert_eq!(progress[0].level, 1);
+
+    store.delete_task(task).expect("删除任务");
+    assert!(
+        store
+            .progress_for_category(category)
+            .expect("读取进度")
+            .is_empty(),
+        "已删除任务的进度不应出现"
+    );
+}

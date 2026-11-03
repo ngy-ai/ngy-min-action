@@ -6,7 +6,7 @@
 use eframe::egui;
 use tracing::warn;
 
-use crate::app::{MinActionApp, PendingDelete};
+use crate::app::{FrequencyMode, MinActionApp, PendingDelete};
 use crate::model::{CategoryId, Frequency, GoalId, TaskDraft, TaskStatus};
 
 impl MinActionApp {
@@ -256,21 +256,55 @@ impl MinActionApp {
                     ui.text_edit_singleline(&mut self.new_task);
                     create_task = ui.button("添加").clicked();
                 });
+                ui.horizontal(|ui| {
+                    ui.label("频率");
+                    for (mode, text) in [
+                        (FrequencyMode::Daily, "每天"),
+                        (FrequencyMode::EveryNDays, "每 N 天"),
+                        (FrequencyMode::WeeklyN, "每周 N 次"),
+                    ] {
+                        if ui
+                            .selectable_label(self.new_task_mode == mode, text)
+                            .clicked()
+                            && self.new_task_mode != mode
+                        {
+                            self.new_task_mode = mode;
+                            self.new_task_interval = mode.default_interval().to_string();
+                        }
+                    }
+                });
+                if self.new_task_mode != FrequencyMode::Daily {
+                    ui.horizontal(|ui| {
+                        ui.label(self.new_task_mode.interval_label());
+                        ui.add(
+                            egui::TextEdit::singleline(&mut self.new_task_interval)
+                                .desired_width(60.0),
+                        );
+                    });
+                }
                 if create_task && let Some(category) = self.selected_category {
-                    let draft = TaskDraft {
-                        name: self.new_task.clone(),
-                        frequency: Frequency::Daily,
-                        estimated_minutes: None,
-                    };
-                    if self
-                        .apply(|app| {
-                            app.store
-                                .create_task(category, draft)
-                                .map(|_| "已添加任务".to_owned())
-                        })
-                        .is_some()
-                    {
-                        self.new_task.clear();
+                    let interval = self.new_task_interval.trim().parse::<i64>().unwrap_or(0);
+                    match Frequency::from_parts(self.new_task_mode.kind(), interval) {
+                        Ok(frequency) => {
+                            let draft = TaskDraft {
+                                name: self.new_task.clone(),
+                                frequency,
+                                estimated_minutes: None,
+                            };
+                            if self
+                                .apply(|app| {
+                                    app.store
+                                        .create_task(category, draft)
+                                        .map(|_| "已添加任务".to_owned())
+                                })
+                                .is_some()
+                            {
+                                self.new_task.clear();
+                            }
+                        }
+                        Err(error) => {
+                            self.error = Some(error.to_string());
+                        }
                     }
                 }
             }
@@ -292,6 +326,26 @@ impl MinActionApp {
                 for task in &self.tasks {
                     ui.horizontal(|ui| {
                         ui.label(&task.name);
+                        ui.label(task.frequency.label());
+                        let progress = self
+                            .task_progress
+                            .iter()
+                            .find(|item| item.task_id == task.id);
+                        let progress_text = match progress {
+                            None => "未开始".to_string(),
+                            Some(item) if item.graduated => "已巩固".to_string(),
+                            // 新任务落库时就有 level = 0 的进度行，等同于未开始。
+                            Some(item) if item.level == 0 => "未开始".to_string(),
+                            Some(item) => match item.next_review_on {
+                                Some(date) => format!(
+                                    "第 {} 级，下次复习 {}",
+                                    item.level,
+                                    date.format("%Y-%m-%d")
+                                ),
+                                None => format!("第 {} 级", item.level),
+                            },
+                        };
+                        ui.label(progress_text);
                         let label = match task.status {
                             TaskStatus::Active => "暂停",
                             TaskStatus::Paused => "恢复",

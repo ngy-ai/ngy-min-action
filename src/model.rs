@@ -170,6 +170,18 @@ impl Frequency {
         }
     }
 
+    /// 人类可读的频率描述。
+    ///
+    /// 只用于展示，不参与调度判定。
+    #[must_use]
+    pub fn label(self) -> String {
+        match self {
+            Frequency::Daily => "每天".to_string(),
+            Frequency::EveryNDays(days) => format!("每 {days} 天"),
+            Frequency::WeeklyN(times) => format!("每周 {times} 次"),
+        }
+    }
+
     /// 入库用的类型标签。
     #[must_use]
     pub fn kind(self) -> &'static str {
@@ -499,7 +511,30 @@ pub fn validate_estimated_minutes(minutes: Option<u16>) -> Result<Option<u16>, D
 
 #[cfg(test)]
 mod tests {
-    use super::fold_name;
+    use super::{Frequency, fold_name};
+
+    #[test]
+    fn frequency_labels_are_human_readable() {
+        assert_eq!(Frequency::Daily.label(), "每天");
+        assert_eq!(Frequency::EveryNDays(3).label(), "每 3 天");
+        assert_eq!(Frequency::WeeklyN(2).label(), "每周 2 次");
+    }
+
+    #[test]
+    fn frequency_parameters_are_bounded() {
+        assert!(Frequency::from_parts("every_n_days", 0).is_err());
+        assert!(Frequency::from_parts("every_n_days", 366).is_err());
+        assert!(Frequency::from_parts("weekly_n", 0).is_err());
+        assert!(Frequency::from_parts("weekly_n", 8).is_err());
+        assert_eq!(
+            Frequency::from_parts("every_n_days", 3).expect("合法间隔"),
+            Frequency::EveryNDays(3)
+        );
+        assert_eq!(
+            Frequency::from_parts("weekly_n", 7).expect("合法次数"),
+            Frequency::WeeklyN(7)
+        );
+    }
 
     #[test]
     fn sharp_s_expands_under_full_case_folding() {

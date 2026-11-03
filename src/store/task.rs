@@ -3,9 +3,10 @@
 use rusqlite::{OptionalExtension, params};
 
 use crate::model::{
-    CategoryId, DomainError, MAX_TASK_NAME_CHARS, Task, TaskDraft, TaskId, TaskStatus,
-    validate_estimated_minutes, validate_name,
+    CategoryId, DomainError, MAX_TASK_NAME_CHARS, ReviewProgress, Task, TaskDraft, TaskId,
+    TaskStatus, validate_estimated_minutes, validate_name,
 };
+use crate::store::action::map_progress;
 use crate::store::{OpTrace, Store, decode_date, encode_date, now_rfc3339};
 
 impl Store {
@@ -199,6 +200,36 @@ impl Store {
             params![task.0, encode_date(date)],
         )?;
         Ok(())
+    }
+
+    /// 某分类下全部未删除任务的复习进度。
+    ///
+    /// 无复习记录的任务不出现在结果中，调用方据此显示「未开始」。
+    /// 一次 JOIN 取回，避免列表渲染时逐条查询。
+    ///
+    /// # Errors
+    ///
+    /// 读写失败时返回 [`DomainError::Store`]。
+    pub fn progress_for_category(
+        &self,
+        category: CategoryId,
+    ) -> Result<Vec<ReviewProgress>, DomainError> {
+        let mut trace = OpTrace::begin("progress_for_category");
+        let connection = self.guard();
+        let mut statement = connection.prepare(
+            "SELECT rp.task_id, rp.level, rp.next_review_on, rp.graduated
+               FROM review_progress rp
+               JOIN tasks t ON t.id = rp.task_id
+              WHERE t.category_id = ?1 AND t.deleted_at IS NULL
+              ORDER BY rp.task_id",
+        )?;
+        let rows = statement.query_map(params![category.0], map_progress)?;
+        let mut items = Vec::new();
+        for row in rows {
+            items.push(row?);
+        }
+        trace.ok();
+        Ok(items)
     }
 }
 

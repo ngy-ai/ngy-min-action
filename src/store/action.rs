@@ -427,7 +427,7 @@ fn map_action(row: &rusqlite::Row<'_>) -> rusqlite::Result<Action> {
     })
 }
 
-fn map_progress(row: &rusqlite::Row<'_>) -> rusqlite::Result<ReviewProgress> {
+pub(crate) fn map_progress(row: &rusqlite::Row<'_>) -> rusqlite::Result<ReviewProgress> {
     let next_review_on: Option<String> = row.get(2)?;
     let graduated: i64 = row.get(3)?;
     Ok(ReviewProgress {
