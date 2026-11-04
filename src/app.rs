@@ -5,6 +5,7 @@
 
 mod main_view;
 mod popup;
+mod rename_dialog;
 mod today_view;
 
 use std::collections::HashSet;
@@ -19,7 +20,8 @@ use tracing::{debug, info, warn};
 use crate::clock::Clock;
 use crate::common::elapsed_ms;
 use crate::model::{
-    Action, Category, CategoryId, DeletionImpact, Goal, GoalId, ReminderState, ReviewProgress, Task,
+    Action, Category, CategoryId, DeletionImpact, Goal, GoalId, ReminderState, ReviewProgress,
+    Task, TaskId,
 };
 use crate::store::Store;
 
@@ -55,6 +57,19 @@ pub(crate) enum PendingDelete {
     Goal(GoalId),
     /// 待删除的分类。
     Category(CategoryId),
+    /// 待删除的任务。
+    Task(TaskId),
+}
+
+/// 等待用户提交的重命名对象。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RenameTarget {
+    /// 待重命名的目标。
+    Goal(GoalId),
+    /// 待重命名的分类。
+    Category(CategoryId),
+    /// 待重命名的任务。
+    Task(TaskId),
 }
 
 /// 新建任务时可选的频率模式。
@@ -125,6 +140,8 @@ pub struct MinActionApp {
     pub(crate) root_collapsed: bool,
     pub(crate) pending_delete: Option<PendingDelete>,
     pub(crate) delete_impact: Option<DeletionImpact>,
+    pub(crate) rename_target: Option<RenameTarget>,
+    pub(crate) draft_rename_name: String,
     pub(crate) error: Option<String>,
     pub(crate) ticks: Receiver<TickEvent>,
     pub(crate) popup: Arc<Mutex<PopupState>>,
@@ -169,6 +186,8 @@ impl MinActionApp {
             root_collapsed: false,
             pending_delete: None,
             delete_impact: None,
+            rename_target: None,
+            draft_rename_name: String::new(),
             error: None,
             ticks,
             popup: Arc::new(Mutex::new(PopupState::default())),
@@ -512,6 +531,7 @@ impl eframe::App for MinActionApp {
 
         self.ui_new_goal_dialog(&ctx);
         self.ui_new_category_dialog(&ctx);
+        self.ui_rename_dialog(&ctx);
         self.ui_delete_dialog(&ctx);
     }
 }

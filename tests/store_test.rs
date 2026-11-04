@@ -494,6 +494,45 @@ fn blank_goal_names_are_rejected_without_writing() {
 }
 
 #[test]
+fn task_open_actions_counts_unsettled_actions() {
+    let store = open_store("task-open-actions");
+    let goal = store.create_goal("学习英语", None).expect("创建目标");
+    let category = store.create_category(goal, "口语").expect("创建分类");
+    let task = store
+        .create_task(category, draft("连读"))
+        .expect("创建任务");
+
+    assert_eq!(
+        store.task_open_actions(task).expect("无行动"),
+        0,
+        "没有行动时应为 0"
+    );
+
+    let actions = store.generate_day(date(2026, 11, 2), 5).expect("生成行动");
+    assert_eq!(
+        store.task_open_actions(task).expect("一条待完成"),
+        1,
+        "一条 pending 行动应计为 1"
+    );
+
+    store
+        .settle_action(actions[0].id, ActionStatus::Done)
+        .expect("完成行动");
+    assert_eq!(
+        store.task_open_actions(task).expect("结算后"),
+        0,
+        "已完成行动不应计入"
+    );
+
+    store.delete_task(task).expect("删除任务");
+    assert_eq!(
+        store.task_open_actions(task).expect("删除后"),
+        0,
+        "已删除任务返回 0"
+    );
+}
+
+#[test]
 fn all_tasks_includes_paused_tasks_for_name_resolution() {
     let store = open_store("all-tasks");
     let goal = store.create_goal("学习英语", None).expect("创建目标");

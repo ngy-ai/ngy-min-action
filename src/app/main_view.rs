@@ -6,8 +6,8 @@
 use eframe::egui;
 use tracing::warn;
 
-use crate::app::{FrequencyMode, MinActionApp, PendingDelete};
-use crate::model::{CategoryId, Frequency, GoalId, TaskDraft, TaskStatus};
+use crate::app::{FrequencyMode, MinActionApp, PendingDelete, RenameTarget};
+use crate::model::{CategoryId, DeletionImpact, Frequency, GoalId, TaskDraft, TaskStatus};
 
 impl MinActionApp {
     pub(crate) fn ui_main_view(&mut self, ui: &mut egui::Ui) {
@@ -41,6 +41,7 @@ impl MinActionApp {
         let mut drop_category: Option<CategoryId> = None;
         let mut toggle_goal: Option<GoalId> = None;
         let mut toggle_root = false;
+        let mut rename: Option<(RenameTarget, String)> = None;
 
         egui::ScrollArea::vertical()
             .id_salt("structure-tree")
@@ -76,6 +77,9 @@ impl MinActionApp {
                         if ui.selectable_label(selected, &goal.name).clicked() {
                             select_goal = Some(goal.id);
                         }
+                        if ui.small_button("改名").clicked() {
+                            rename = Some((RenameTarget::Goal(goal.id), goal.name.clone()));
+                        }
                         if ui.small_button("×").on_hover_text("删除目标").clicked() {
                             drop_goal = Some(goal.id);
                         }
@@ -97,6 +101,12 @@ impl MinActionApp {
                             let picked = self.selected_category == Some(category.id);
                             if ui.selectable_label(picked, &category.name).clicked() {
                                 select_category = Some(category.id);
+                            }
+                            if ui.small_button("改名").clicked() {
+                                rename = Some((
+                                    RenameTarget::Category(category.id),
+                                    category.name.clone(),
+                                ));
                             }
                             if ui.small_button("×").on_hover_text("删除分类").clicked() {
                                 drop_category = Some(category.id);
@@ -131,6 +141,9 @@ impl MinActionApp {
             self.selected_category = Some(category);
             self.refresh_scope();
         }
+        if let Some((target, current)) = rename {
+            self.open_rename_dialog(target, &current);
+        }
         if let Some(goal) = drop_goal {
             self.request_delete(PendingDelete::Goal(goal));
         }
@@ -144,6 +157,15 @@ impl MinActionApp {
         let outcome = match target {
             PendingDelete::Goal(goal) => self.store.goal_deletion_impact(goal),
             PendingDelete::Category(category) => self.store.category_deletion_impact(category),
+            PendingDelete::Task(task) => {
+                self.store
+                    .task_open_actions(task)
+                    .map(|pending_actions| DeletionImpact {
+                        categories: 0,
+                        tasks: 1,
+                        pending_actions,
+                    })
+            }
         };
         match outcome {
             Ok(impact) => {
@@ -167,6 +189,14 @@ impl MinActionApp {
             return;
         };
         let impact = self.delete_impact.unwrap_or_default();
+        let task_name = match target {
+            PendingDelete::Task(task) => self
+                .all_tasks
+                .iter()
+                .find(|item| item.id == task)
+                .map_or_else(|| format!("任务#{}", task.0), |item| item.name.clone()),
+            PendingDelete::Goal(_) | PendingDelete::Category(_) => "该任务".to_owned(),
+        };
 
         let mut confirm = false;
         let mut cancel = false;
@@ -174,6 +204,7 @@ impl MinActionApp {
         egui::Window::new(match target {
             PendingDelete::Goal(_) => "删除目标",
             PendingDelete::Category(_) => "删除分类",
+            PendingDelete::Task(_) => "删除任务",
         })
         .id(egui::Id::unique("dialog-delete"))
         .collapsible(false)
@@ -192,6 +223,12 @@ impl MinActionApp {
                     ui.label(format!(
                         "将一并删除 {} 个任务、{} 条未完成行动。",
                         impact.tasks, impact.pending_actions
+                    ));
+                }
+                PendingDelete::Task(_) => {
+                    ui.label(format!(
+                        "删除任务「{task_name}」会作废 {} 条未完成行动，确定删除吗？",
+                        impact.pending_actions
                     ));
                 }
             }
@@ -225,6 +262,11 @@ impl MinActionApp {
                         )
                     })
                 }),
+                PendingDelete::Task(task) => self.apply(|app| {
+                    app.store
+                        .delete_task(task)
+                        .map(|()| "已删除任务".to_owned())
+                }),
             };
             if hint.is_some() {
                 match target {
@@ -236,6 +278,8 @@ impl MinActionApp {
                             self.selected_category = None;
                         }
                     }
+                    // 任务删除后由 reload 重新取任务列表，无需额外清理选择。
+                    PendingDelete::Task(_) => {}
                 }
                 self.pending_delete = None;
                 self.delete_impact = None;
@@ -315,6 +359,8 @@ impl MinActionApp {
 
         let mut toggle: Option<(crate::model::TaskId, TaskStatus)> = None;
         let mut reset: Option<crate::model::TaskId> = None;
+        let mut rename: Option<(RenameTarget, String)> = None;
+        let mut drop_task: Option<crate::model::TaskId> = None;
 
         egui::ScrollArea::vertical()
             .id_salt("task-list")
@@ -360,10 +406,22 @@ impl MinActionApp {
                         if ui.small_button("重置复习").clicked() {
                             reset = Some(task.id);
                         }
+                        if ui.small_button("改名").clicked() {
+                            rename = Some((RenameTarget::Task(task.id), task.name.clone()));
+                        }
+                        if ui.small_button("×").on_hover_text("删除任务").clicked() {
+                            drop_task = Some(task.id);
+                        }
                     });
                 }
             });
 
+        if let Some((target, current)) = rename {
+            self.open_rename_dialog(target, &current);
+        }
+        if let Some(task) = drop_task {
+            self.request_delete(PendingDelete::Task(task));
+        }
         if let Some((task, status)) = toggle {
             let hint = match status {
                 TaskStatus::Paused => "已暂停任务",
