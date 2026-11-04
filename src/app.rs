@@ -4,6 +4,7 @@
 //! 跨日推进由后台 tokio 任务的 tick 驱动，界面侧只负责重绘。
 
 mod delete_dialog;
+mod frequency_dialog;
 mod main_view;
 mod popup;
 mod rename_dialog;
@@ -146,6 +147,9 @@ pub struct MinActionApp {
     pub(crate) rename_target: Option<RenameTarget>,
     pub(crate) draft_rename_name: String,
     pub(crate) rename_select_all: bool,
+    pub(crate) frequency_target: Option<TaskId>,
+    pub(crate) draft_frequency_mode: FrequencyMode,
+    pub(crate) draft_frequency_interval: String,
     pub(crate) error: Option<String>,
     pub(crate) ticks: Receiver<TickEvent>,
     pub(crate) popup: Arc<Mutex<PopupState>>,
@@ -193,6 +197,9 @@ impl MinActionApp {
             rename_target: None,
             draft_rename_name: String::new(),
             rename_select_all: false,
+            frequency_target: None,
+            draft_frequency_mode: FrequencyMode::Daily,
+            draft_frequency_interval: String::new(),
             error: None,
             ticks,
             popup: Arc::new(Mutex::new(PopupState::default())),
@@ -537,6 +544,7 @@ impl eframe::App for MinActionApp {
         self.ui_new_goal_dialog(&ctx);
         self.ui_new_category_dialog(&ctx);
         self.ui_rename_dialog(&ctx);
+        self.ui_frequency_dialog(&ctx);
         self.ui_delete_dialog(&ctx);
     }
 }
