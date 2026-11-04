@@ -15,6 +15,7 @@ use crate::model::{CategoryId, Frequency, TaskDraft, TaskId};
 use crate::store::Store;
 
 mod delete;
+mod estimate;
 mod frequency;
 mod rename;
 mod render;
