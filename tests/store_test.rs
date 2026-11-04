@@ -621,3 +621,41 @@ fn progress_for_category_returns_progress_of_live_tasks_only() {
         "已删除任务的进度不应出现"
     );
 }
+
+#[test]
+fn update_task_frequency_only_touches_the_frequency_columns() {
+    let store = open_store("update-frequency");
+    let goal = store.create_goal("学习英语", None).expect("创建目标");
+    let category = store.create_category(goal, "口语").expect("创建分类");
+    let task = store
+        .create_task(category, draft("连读"))
+        .expect("创建任务");
+
+    store
+        .update_task_frequency(task, Frequency::EveryNDays(3))
+        .expect("改成每 3 天");
+
+    let tasks = store.tasks(category).expect("列出任务");
+    assert_eq!(tasks[0].frequency, Frequency::EveryNDays(3));
+    assert_eq!(tasks[0].name, "连读", "名称不应变化");
+    assert_eq!(tasks[0].status, TaskStatus::Active, "状态不应变化");
+}
+
+#[test]
+fn update_task_frequency_rejects_deleted_task() {
+    let store = open_store("update-frequency-deleted");
+    let goal = store.create_goal("学习英语", None).expect("创建目标");
+    let category = store.create_category(goal, "口语").expect("创建分类");
+    let task = store
+        .create_task(category, draft("连读"))
+        .expect("创建任务");
+    store.delete_task(task).expect("删除任务");
+
+    let error = store
+        .update_task_frequency(task, Frequency::Daily)
+        .expect_err("已删除任务必须拒绝");
+    assert!(
+        matches!(error, DomainError::NotFound { .. }),
+        "应返回 NotFound，实际为 {error:?}"
+    );
+}
