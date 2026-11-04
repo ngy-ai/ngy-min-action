@@ -28,13 +28,19 @@
 
 - [x] T010 在 `src/app/tests/stats.rs` 覆盖：打开后快照非空、空库显示空状态、打开不产生写入
 - [x] T011 跑通 `cargo fmt --check`、`cargo clippy --all-targets --all-features -- -D warnings`、`cargo test --all-targets --all-features`
-- [ ] T012 用隔离的 `%LOCALAPPDATA%` 起一次 GUI 截图，确认统计面板的排版
+- [x] T012 用隔离的 `%LOCALAPPDATA%` 起一次 GUI 截图，确认统计面板的排版
 
 ## Dependencies
 
 - T001 → T002/T003/T004 → T005
 - T005 → T006 → T007 → T008/T009
 - T010 依赖 T007
+
+## 验收记录
+
+- 隔离 `%LOCALAPPDATA%` 启动 GUI，造 3 条今日行动（2 完成 / 1 跳过）后截图确认有数据面板：`近 30 天` 下进度条铺满 420 宽度并只填充约 2/3，文字「完成率 67%」；分项「完成 2 · 跳过 1 · 过期 0」；「当前连续 1 天 / 历史最长 1 天」；「未开始 1 · 学习中 2 · 已巩固 0 / 共 3 个任务」；「关闭」按钮完整可见，无截断或溢出
+- 空库截图确认空态：显示「近 30 天还没有已结算的行动」，不显示进度条、历史最长与合计，「还没有任务」，「关闭」完整可见
+- 鼠标事件注入在该环境仍未被 egui 接收（与 006 的记录一致）。截图阶段临时让 `MinActionApp::new` 自动打开面板，验收后已还原，该改动未入库；点击入口的行为由 `ui_top_bar` 的 `open_stats()` 与 headless 用例覆盖
 
 ## 约束与提醒
 
