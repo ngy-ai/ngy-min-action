@@ -3,6 +3,7 @@
 //! 界面不做业务判断，只调用 `store` 与 `schedule` 并把结果摆出来；
 //! 跨日推进由后台 tokio 任务的 tick 驱动，界面侧只负责重绘。
 
+mod delete_dialog;
 mod main_view;
 mod popup;
 mod rename_dialog;
