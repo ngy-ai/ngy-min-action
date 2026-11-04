@@ -9,6 +9,7 @@ Rust + spec-kit 的 vibe coding 模板。本文件是给编码代理的速查入
 | 路径 | 放什么 |
 | --- | --- |
 | `src/` | 源码，模块按职责命名；测试镜像到 `tests/<module>_test.rs` |
+| `src/app/` | 界面层：`app.rs` 状态与事件循环、`main_view` 结构树、`today_view` 今日清单、`rename_dialog` / `delete_dialog` 弹窗、`tests.rs` headless 验收 |
 | `.specify/memory/constitution.md` | 八条原则与治理规则，唯一权威 |
 | `.specify/templates/` | spec / plan / tasks / checklist 模板 |
 | `.specify/scripts/` | spec-kit 辅助脚本（PowerShell / Python） |
