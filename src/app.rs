@@ -8,6 +8,7 @@ mod frequency_dialog;
 mod main_view;
 mod popup;
 mod rename_dialog;
+mod reset_dialog;
 #[cfg(test)]
 mod tests;
 mod today_view;
@@ -150,6 +151,8 @@ pub struct MinActionApp {
     pub(crate) frequency_target: Option<TaskId>,
     pub(crate) draft_frequency_mode: FrequencyMode,
     pub(crate) draft_frequency_interval: String,
+    pub(crate) reset_target: Option<TaskId>,
+    pub(crate) reset_level: u8,
     pub(crate) error: Option<String>,
     pub(crate) ticks: Receiver<TickEvent>,
     pub(crate) popup: Arc<Mutex<PopupState>>,
@@ -200,6 +203,8 @@ impl MinActionApp {
             frequency_target: None,
             draft_frequency_mode: FrequencyMode::Daily,
             draft_frequency_interval: String::new(),
+            reset_target: None,
+            reset_level: 0,
             error: None,
             ticks,
             popup: Arc::new(Mutex::new(PopupState::default())),
@@ -545,6 +550,7 @@ impl eframe::App for MinActionApp {
         self.ui_new_category_dialog(&ctx);
         self.ui_rename_dialog(&ctx);
         self.ui_frequency_dialog(&ctx);
+        self.ui_reset_dialog(&ctx);
         self.ui_delete_dialog(&ctx);
     }
 }

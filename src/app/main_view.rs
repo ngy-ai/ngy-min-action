@@ -234,7 +234,13 @@ impl MinActionApp {
                 for task in &self.tasks {
                     ui.horizontal(|ui| {
                         ui.label(&task.name);
-                        ui.label(task.frequency.label());
+                        if ui
+                            .selectable_label(false, task.frequency.label())
+                            .on_hover_text("修改频率")
+                            .clicked()
+                        {
+                            frequency = Some((task.id, task.frequency));
+                        }
                         let progress = self
                             .task_progress
                             .iter()
@@ -268,12 +274,10 @@ impl MinActionApp {
                         if ui.small_button("重置复习").clicked() {
                             reset = Some(task.id);
                         }
-                        if ui.small_button("频率").clicked() {
-                            frequency = Some((task.id, task.frequency));
-                        }
                         if ui.small_button("改名").clicked() {
                             rename = Some((RenameTarget::Task(task.id), task.name.clone()));
                         }
+                        ui.add_space(8.0);
                         if ui.small_button("×").on_hover_text("删除任务").clicked() {
                             drop_task = Some(task.id);
                         }
@@ -302,11 +306,7 @@ impl MinActionApp {
             });
         }
         if let Some(task) = reset {
-            self.apply(|app| {
-                app.store
-                    .reset_review_progress(task)
-                    .map(|()| "已重置复习进度".to_owned())
-            });
+            self.request_reset(task);
         }
     }
 
