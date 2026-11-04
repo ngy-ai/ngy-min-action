@@ -7,6 +7,10 @@ use chrono::NaiveDate;
 use crate::common::{MAX_EVERY_N_DAYS, MAX_TASK_NAME, MAX_WEEKLY_N};
 use crate::store::StoreError;
 
+mod stats;
+
+pub use stats::{ActionTally, ReviewStats};
+
 /// 目标名称的最大字符数。
 pub const MAX_GOAL_NAME: usize = 80;
 
