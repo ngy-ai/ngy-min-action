@@ -381,3 +381,68 @@ fn dialogs_and_views_render_without_panicking() {
         app.ui_delete_dialog(&ctx);
     });
 }
+
+#[test]
+fn deleting_a_task_without_open_actions_reports_zero() {
+    let mut app = open_app("delete-task-no-open");
+    let category = seed_category(&mut app, "学习英语", "口语");
+    let task = app
+        .store
+        .create_task(category, draft("连读"))
+        .expect("创建任务");
+    app.reload().expect("刷新界面数据");
+
+    let actions: Vec<_> = app.actions.iter().map(|item| item.id).collect();
+    assert!(!actions.is_empty(), "新建任务应生成今天的行动");
+    for action in actions {
+        app.store
+            .settle_action(action, ActionStatus::Done)
+            .expect("完成行动");
+    }
+    app.reload().expect("刷新界面数据");
+    assert_eq!(
+        app.store.task_open_actions(task).expect("计数"),
+        0,
+        "全部结算后不应再有未完成行动"
+    );
+
+    app.request_delete(PendingDelete::Task(task));
+    assert_eq!(
+        app.delete_impact.map(|impact| impact.pending_actions),
+        Some(0),
+        "确认框应说明将作废 0 条行动"
+    );
+
+    app.confirm_delete();
+    assert!(
+        !app.tasks.iter().any(|item| item.id == task),
+        "作废 0 条时也应能正常删除"
+    );
+}
+
+#[test]
+fn completed_actions_survive_task_deletion() {
+    let mut app = open_app("delete-task-keeps-done");
+    let category = seed_category(&mut app, "学习英语", "口语");
+    let task = app
+        .store
+        .create_task(category, draft("连读"))
+        .expect("创建任务");
+    app.reload().expect("刷新界面数据");
+
+    let action = app.actions[0].id;
+    app.store
+        .settle_action(action, ActionStatus::Done)
+        .expect("完成行动");
+    app.reload().expect("刷新界面数据");
+
+    app.request_delete(PendingDelete::Task(task));
+    app.confirm_delete();
+
+    let kept = app
+        .actions
+        .iter()
+        .find(|item| item.id == action)
+        .map(|item| item.status);
+    assert_eq!(kept, Some(ActionStatus::Done), "已完成行动的历史记录应保留");
+}

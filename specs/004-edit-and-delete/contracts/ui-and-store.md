@@ -39,7 +39,7 @@ pub fn task_open_actions(&self, task: TaskId) -> Result<usize, DomainError>;
 
 ### 任务删除
 
-1. 任务行「删除」按钮 → 读取 `task_open_actions`
+1. 任务行「×」按钮（悬停提示「删除任务」）→ 读取 `task_open_actions`
 2. 弹出确认框：`删除任务「连读」会作废 3 条未完成行动，确定删除吗？`，按钮为「删除」「取消」
 3. 确认 → `delete_task` → 刷新；取消 → 关闭弹窗，不做任何修改
 
