@@ -10,6 +10,7 @@ mod main_view;
 mod popup;
 mod rename_dialog;
 mod reset_dialog;
+mod stats_dialog;
 #[cfg(test)]
 mod tests;
 mod today_view;
@@ -27,7 +28,7 @@ use crate::clock::Clock;
 use crate::common::elapsed_ms;
 use crate::model::{
     Action, Category, CategoryId, DeletionImpact, Goal, GoalId, ReminderState, ReviewProgress,
-    Task, TaskId,
+    ReviewStats, Task, TaskId,
 };
 use crate::store::Store;
 
@@ -157,6 +158,8 @@ pub struct MinActionApp {
     pub(crate) reset_level: u8,
     pub(crate) estimate_target: Option<TaskId>,
     pub(crate) draft_estimate: String,
+    pub(crate) show_stats: bool,
+    pub(crate) stats: Option<ReviewStats>,
     pub(crate) error: Option<String>,
     pub(crate) ticks: Receiver<TickEvent>,
     pub(crate) popup: Arc<Mutex<PopupState>>,
@@ -212,6 +215,8 @@ impl MinActionApp {
             reset_level: 0,
             estimate_target: None,
             draft_estimate: String::new(),
+            show_stats: false,
+            stats: None,
             error: None,
             ticks,
             popup: Arc::new(Mutex::new(PopupState::default())),
@@ -510,6 +515,10 @@ impl MinActionApp {
                     }
                 }
             }
+            ui.separator();
+            if ui.button("统计").clicked() {
+                self.open_stats();
+            }
         });
 
         if let Some(message) = self.error.clone() {
@@ -559,6 +568,7 @@ impl eframe::App for MinActionApp {
         self.ui_frequency_dialog(&ctx);
         self.ui_estimate_dialog(&ctx);
         self.ui_reset_dialog(&ctx);
+        self.ui_stats_dialog(&ctx);
         self.ui_delete_dialog(&ctx);
     }
 }
