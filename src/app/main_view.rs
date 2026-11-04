@@ -221,6 +221,7 @@ impl MinActionApp {
         let mut toggle: Option<(crate::model::TaskId, TaskStatus)> = None;
         let mut reset: Option<crate::model::TaskId> = None;
         let mut rename: Option<(RenameTarget, String)> = None;
+        let mut frequency: Option<(crate::model::TaskId, Frequency)> = None;
         let mut drop_task: Option<crate::model::TaskId> = None;
 
         egui::ScrollArea::vertical()
@@ -267,6 +268,9 @@ impl MinActionApp {
                         if ui.small_button("重置复习").clicked() {
                             reset = Some(task.id);
                         }
+                        if ui.small_button("频率").clicked() {
+                            frequency = Some((task.id, task.frequency));
+                        }
                         if ui.small_button("改名").clicked() {
                             rename = Some((RenameTarget::Task(task.id), task.name.clone()));
                         }
@@ -277,6 +281,9 @@ impl MinActionApp {
                 }
             });
 
+        if let Some((task, current)) = frequency {
+            self.open_frequency_dialog(task, current);
+        }
         if let Some((target, current)) = rename {
             self.open_rename_dialog(target, &current);
         }

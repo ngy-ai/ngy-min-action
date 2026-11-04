@@ -3,8 +3,8 @@
 use rusqlite::{OptionalExtension, params};
 
 use crate::model::{
-    CategoryId, DomainError, MAX_TASK_NAME_CHARS, ReviewProgress, Task, TaskDraft, TaskId,
-    TaskStatus, validate_estimated_minutes, validate_name,
+    CategoryId, DomainError, Frequency, MAX_TASK_NAME_CHARS, ReviewProgress, Task, TaskDraft,
+    TaskId, TaskStatus, validate_estimated_minutes, validate_name,
 };
 use crate::store::action::map_progress;
 use crate::store::{OpTrace, Store, decode_date, encode_date, now_rfc3339};
@@ -151,6 +151,36 @@ impl Store {
         let updated = connection.execute(
             "UPDATE tasks SET status = ?2 WHERE id = ?1 AND deleted_at IS NULL",
             params![id.0, status.as_str()],
+        )?;
+        if updated == 0 {
+            return Err(DomainError::NotFound {
+                entity: "任务",
+                id: id.0,
+            });
+        }
+        trace.ok();
+        Ok(())
+    }
+
+    /// 更新任务的频率。
+    ///
+    /// 只改 `freq_kind` 与 `freq_interval`；名称、状态、`last_generated_on`
+    /// 与复习进度都不变。已生成的行动不追溯，下一次生成按新间隔判定。
+    ///
+    /// # Errors
+    ///
+    /// 任务不存在或已删除时返回 [`DomainError::NotFound`]。
+    pub fn update_task_frequency(
+        &self,
+        id: TaskId,
+        frequency: Frequency,
+    ) -> Result<(), DomainError> {
+        let mut trace = OpTrace::begin("update_task_frequency");
+        let connection = self.guard();
+        let updated = connection.execute(
+            "UPDATE tasks SET freq_kind = ?2, freq_interval = ?3
+              WHERE id = ?1 AND deleted_at IS NULL",
+            params![id.0, frequency.kind(), frequency.raw_interval()],
         )?;
         if updated == 0 {
             return Err(DomainError::NotFound {
