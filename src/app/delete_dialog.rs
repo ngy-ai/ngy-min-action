@@ -111,30 +111,14 @@ impl MinActionApp {
         let Some(target) = self.pending_delete else {
             return;
         };
-        let hint = match target {
-            PendingDelete::Goal(goal) => self.apply(|app| {
-                app.store.delete_goal(goal).map(|impact| {
-                    format!(
-                        "已删除目标：分类 {} 个、任务 {} 个、未完成行动 {} 条",
-                        impact.categories, impact.tasks, impact.pending_actions
-                    )
-                })
-            }),
-            PendingDelete::Category(category) => self.apply(|app| {
-                app.store.delete_category(category).map(|impact| {
-                    format!(
-                        "已删除分类：任务 {} 个、未完成行动 {} 条",
-                        impact.tasks, impact.pending_actions
-                    )
-                })
-            }),
-            PendingDelete::Task(task) => self.apply(|app| {
-                app.store
-                    .delete_task(task)
-                    .map(|()| "已删除任务".to_owned())
-            }),
+        let done = match target {
+            PendingDelete::Goal(goal) => self.apply(|app| app.store.delete_goal(goal)).is_some(),
+            PendingDelete::Category(category) => self
+                .apply(|app| app.store.delete_category(category))
+                .is_some(),
+            PendingDelete::Task(task) => self.apply(|app| app.store.delete_task(task)).is_some(),
         };
-        if hint.is_none() {
+        if !done {
             return;
         }
         match target {
