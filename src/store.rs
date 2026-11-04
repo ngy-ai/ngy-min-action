@@ -7,6 +7,7 @@ mod action;
 mod goal;
 mod reminder;
 mod schema;
+mod stats;
 mod task;
 
 use std::path::{Path, PathBuf};
