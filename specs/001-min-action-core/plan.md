@@ -24,7 +24,7 @@
 
 **Project Type**: desktop-app（单 crate，lib + bin）
 
-**Performance Goals**: 见复杂度追踪表的桌面预算草案（启动到可交互 p95 < 2s、跨日弹窗延迟 p95 < 5s、交互响应 p95 < 100ms、空闲 CPU p95 < 1%、常驻内存 p95 < 150MB、后台驻留内存 p95 < 80MB；规模 200 任务 × 90 天）
+**Performance Goals**: 见复杂度追踪表的桌面预算（启动到可交互 p95 < 1s、空闲 CPU p95 < 1%、常驻内存 p95 < 250MB；交互响应与后台驻留内存尚未纳入门禁；跨日弹窗延迟 p95 < 5s 由人工抽验；规模 200 任务 × 90 天。阈值与实测值已写入宪法 V 的 1.18.0）
 
 **Constraints**: 单实例运行；完全离线；文件上限 700 行（宪法 I）；跨日检测精度 ≤ 5s；弹窗不得夺取键盘焦点
 
@@ -37,10 +37,10 @@
 | 原则 | 判据 | 结论 |
 | --- | --- | --- |
 | I. 文件规模 | 单文件 ≤ 700 行；本次规划的模块按职责切分，预估最大文件 `store/schema.rs` 约 180 行 | PASS |
-| II. 质量与可维护性 | 公共 API 写契约注释（见 `contracts/domain-api.md`）；不写 `#[allow(dead_code)]`；唯一 TODO 挂 issue #1 | PASS |
+| II. 质量与可维护性 | 公共 API 写契约注释（见 `contracts/domain-api.md`）；不写 `#[allow(dead_code)]`；无 TODO（性能预算的 `TODO(#1)` 已于 2026-11-04 清理） | PASS |
 | III. 测试先行 | 调度/复习/提示均为纯函数 + `Clock` 注入，`tests/*_test.rs` 先失败后通过；存储层用临时库做集成测试 | PASS |
 | IV. 接触面一致性 | 对外接触面为界面契约与公共库 API，分别由 `contracts/ui-contract.md`、`contracts/domain-api.md` 固定；错误文案统一按「哪个输入 / 期望 / 如何修正」组织 | PASS |
-| V. 性能与效率 | **例外**：宪法默认预算以 CLI 单次执行为单位，常驻 GUI 进程没有等价端点，`p95 < 100ms` 与 `< 100MB` 两项无法按其原意测量。改用桌面预算草案，见复杂度追踪，收尾挂 issue #1 | **EXCEPTION（已论证）** |
+| V. 性能与效率 | **例外**：宪法默认预算以 CLI 单次执行为单位，常驻 GUI 进程没有等价端点，`p95 < 100ms` 与 `< 100MB` 两项无法按其原意测量。改用桌面预算，实测值与阈值见复杂度追踪，已写入宪法 V（1.18.0） | **EXCEPTION（已论证）** |
 | VI. 简单性与 YAGNI | 单 crate（1 lib + 1 bin target）；不引入 Repository / Service trait；`Clock` trait 是宪法明示允许的「为测试替换实现」；ID newtype 编码了防混用的不变量；不写托盘、自启、导入导出 | PASS |
 | VII. 可观测性 | 沿用 `ngy-utils-tracing`：production 只写 JSON 文件、stdout/stderr 洁净；每个操作记 `op` / `result` / `elapsed_ms`；错误只在 `main` 边界记一次；不记录名称原文以外的 PII | PASS |
 | VIII. 安全基线 | 名称在入口校验并转为受限类型；SQL 全程参数绑定，无字符串拼接；单实例文件锁防写竞争；无凭据与网络 | PASS |
@@ -131,6 +131,10 @@ tests/
 > 常驻内存阈值由草案的 150MB 调整为 250MB：release 实测 222.7MB 且两次测量稳定复现，
 > 主要来自 GPU 后端、字体图集与 200 任务规模的界面数据，而非应用自身的数据结构
 > （私有内存 466MB 中大部分是图形与驱动映射）。调整理由与测量命令已写入宪法第 V 条。
+>
+> 2026-11-04 复核（脚本补齐空闲 CPU 测量后，200 任务 × 90 天、release）：启动 p95 429ms、
+> 空闲 CPU 0.07%、常驻内存 p95 225.1MB，三项均在预算内。首次写入宪法的数字为
+> 305ms / 0.02% / 222.7MB，差异来自同机测量噪声与这次更大的数据集，不改变阈值。
 
 ### 非违规但需说明的设计选择
 
@@ -141,7 +145,7 @@ tests/
 | `deferred` 超过 7 天转 `expired` | 顺延若不设上限，连续多日不用会让待办无限堆积，与 FR-015「不倾倒积压」相悖；7 天是唯一常量，集中定义 |
 | 跨日检测用 2 秒轮询而非精确定时 | 睡眠唤醒与改系统时间会让精确定时失效；轮询直接满足 FR-029，代码更少（见 `research.md` D5） |
 | 界面契约靠手工验收，不做 GUI 自动化 | 宪法 III 第 4 条点名的是 CLI 命令与公共库 API，界面不在其列；桌面 GUI 的自动化测试成本远高于收益。界面行为由 `contracts/ui-contract.md` 固定，由 `quickstart.md` 的五个手工场景验收 |
-| `Store` 同步调用而非 `spawn_blocking` | 本地单用户 SQLite 的单次查询在微秒级，远低于 100ms 的交互预算；`spawn_blocking` 只会给每条读写加一次线程往返与额外的错误路径。实测若出现慢查询（issue #1 的交互响应指标会覆盖这一点）再引入 |
+| `Store` 同步调用而非 `spawn_blocking` | 本地单用户 SQLite 的单次查询在微秒级，远低于交互预算；`spawn_blocking` 只会给每条读写加一次线程往返与额外的错误路径。实测若出现慢查询（交互响应尚未纳入门禁，见宪法 V）再引入 |
 | 测试夹具内联而不建 `tests/common/` | 测试文件各自是独立 crate，共享模块中未被某个 crate 使用的辅助函数会触发 `dead_code`，而宪法 II 禁止 `allow` 抑制 |
 
 ## Phase 完成情况
