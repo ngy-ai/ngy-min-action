@@ -7,6 +7,8 @@ mod delete_dialog;
 mod main_view;
 mod popup;
 mod rename_dialog;
+#[cfg(test)]
+mod tests;
 mod today_view;
 
 use std::collections::HashSet;
@@ -52,7 +54,7 @@ pub struct PopupState {
 }
 
 /// 等待用户确认的删除目标。
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PendingDelete {
     /// 待删除的目标。
     Goal(GoalId),
@@ -143,6 +145,7 @@ pub struct MinActionApp {
     pub(crate) delete_impact: Option<DeletionImpact>,
     pub(crate) rename_target: Option<RenameTarget>,
     pub(crate) draft_rename_name: String,
+    pub(crate) rename_select_all: bool,
     pub(crate) error: Option<String>,
     pub(crate) ticks: Receiver<TickEvent>,
     pub(crate) popup: Arc<Mutex<PopupState>>,
@@ -189,6 +192,7 @@ impl MinActionApp {
             delete_impact: None,
             rename_target: None,
             draft_rename_name: String::new(),
+            rename_select_all: false,
             error: None,
             ticks,
             popup: Arc::new(Mutex::new(PopupState::default())),

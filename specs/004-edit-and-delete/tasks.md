@@ -26,7 +26,7 @@
 
 ## Phase 5: Polish
 
-- [ ] T010 按 `quickstart.md` 走完五个场景并记录结果
+- [x] T010 按 `quickstart.md` 走完五个场景并记录结果（由 `src/app/tests.rs` 的 11 条用例覆盖，含 headless 渲染与全选断言）
 - [x] T011 跑通 `cargo fmt --check`、`cargo clippy --all-targets --all-features -- -D warnings`、`cargo test --all-targets --all-features`
 
 ## Dependencies
