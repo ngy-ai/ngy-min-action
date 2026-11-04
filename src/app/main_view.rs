@@ -151,6 +151,42 @@ impl MinActionApp {
         }
     }
 
+    /// 按新建表单当前的状态创建任务；校验失败时保留输入。
+    pub(crate) fn submit_new_task(&mut self) {
+        let Some(category) = self.selected_category else {
+            return;
+        };
+        let interval = self.new_task_interval.trim().parse::<i64>().unwrap_or(0);
+        let parsed =
+            Frequency::from_parts(self.new_task_mode.kind(), interval).and_then(|frequency| {
+                Self::parse_estimate_text(&self.new_task_estimate)
+                    .map(|minutes| (frequency, minutes))
+            });
+        match parsed {
+            Ok((frequency, estimated_minutes)) => {
+                let draft = TaskDraft {
+                    name: self.new_task.clone(),
+                    frequency,
+                    estimated_minutes,
+                };
+                if self
+                    .apply(|app| {
+                        app.store
+                            .create_task(category, draft)
+                            .map(|_| "已添加任务".to_owned())
+                    })
+                    .is_some()
+                {
+                    self.new_task.clear();
+                    self.new_task_estimate.clear();
+                }
+            }
+            Err(error) => {
+                self.error = Some(error.to_string());
+            }
+        }
+    }
+
     pub(crate) fn ui_task_section(&mut self, ui: &mut egui::Ui) {
         ui.heading("任务");
         match self.selected_category {
@@ -158,7 +194,12 @@ impl MinActionApp {
                 let mut create_task = false;
                 ui.horizontal(|ui| {
                     ui.label("新任务");
-                    ui.text_edit_singleline(&mut self.new_task);
+                    ui.add(egui::TextEdit::singleline(&mut self.new_task).desired_width(170.0));
+                    ui.label("耗时");
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.new_task_estimate).desired_width(56.0),
+                    );
+                    ui.label("分钟");
                     create_task = ui.button("添加").clicked();
                 });
                 ui.horizontal(|ui| {
@@ -187,30 +228,8 @@ impl MinActionApp {
                         );
                     });
                 }
-                if create_task && let Some(category) = self.selected_category {
-                    let interval = self.new_task_interval.trim().parse::<i64>().unwrap_or(0);
-                    match Frequency::from_parts(self.new_task_mode.kind(), interval) {
-                        Ok(frequency) => {
-                            let draft = TaskDraft {
-                                name: self.new_task.clone(),
-                                frequency,
-                                estimated_minutes: None,
-                            };
-                            if self
-                                .apply(|app| {
-                                    app.store
-                                        .create_task(category, draft)
-                                        .map(|_| "已添加任务".to_owned())
-                                })
-                                .is_some()
-                            {
-                                self.new_task.clear();
-                            }
-                        }
-                        Err(error) => {
-                            self.error = Some(error.to_string());
-                        }
-                    }
+                if create_task {
+                    self.submit_new_task();
                 }
             }
             None => {
@@ -222,6 +241,7 @@ impl MinActionApp {
         let mut reset: Option<crate::model::TaskId> = None;
         let mut rename: Option<(RenameTarget, String)> = None;
         let mut frequency: Option<(crate::model::TaskId, Frequency)> = None;
+        let mut estimate: Option<(crate::model::TaskId, Option<u16>)> = None;
         let mut drop_task: Option<crate::model::TaskId> = None;
 
         egui::ScrollArea::vertical()
@@ -240,6 +260,14 @@ impl MinActionApp {
                             .clicked()
                         {
                             frequency = Some((task.id, task.frequency));
+                        }
+                        if let Some(minutes) = task.estimated_minutes
+                            && ui
+                                .selectable_label(false, format!("{minutes} 分钟"))
+                                .on_hover_text("修改预计耗时")
+                                .clicked()
+                        {
+                            estimate = Some((task.id, task.estimated_minutes));
                         }
                         let progress = self
                             .task_progress
@@ -287,6 +315,9 @@ impl MinActionApp {
 
         if let Some((task, current)) = frequency {
             self.open_frequency_dialog(task, current);
+        }
+        if let Some((task, current)) = estimate {
+            self.open_estimate_dialog(task, current);
         }
         if let Some((target, current)) = rename {
             self.open_rename_dialog(target, &current);

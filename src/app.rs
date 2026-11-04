@@ -4,6 +4,7 @@
 //! 跨日推进由后台 tokio 任务的 tick 驱动，界面侧只负责重绘。
 
 mod delete_dialog;
+mod estimate_dialog;
 mod frequency_dialog;
 mod main_view;
 mod popup;
@@ -135,6 +136,7 @@ pub struct MinActionApp {
     pub(crate) new_task: String,
     pub(crate) new_task_mode: FrequencyMode,
     pub(crate) new_task_interval: String,
+    pub(crate) new_task_estimate: String,
     pub(crate) task_progress: Vec<ReviewProgress>,
     pub(crate) show_new_goal: bool,
     pub(crate) show_new_category: bool,
@@ -153,6 +155,8 @@ pub struct MinActionApp {
     pub(crate) draft_frequency_interval: String,
     pub(crate) reset_target: Option<TaskId>,
     pub(crate) reset_level: u8,
+    pub(crate) estimate_target: Option<TaskId>,
+    pub(crate) draft_estimate: String,
     pub(crate) error: Option<String>,
     pub(crate) ticks: Receiver<TickEvent>,
     pub(crate) popup: Arc<Mutex<PopupState>>,
@@ -187,6 +191,7 @@ impl MinActionApp {
             new_task: String::new(),
             new_task_mode: FrequencyMode::Daily,
             new_task_interval: String::new(),
+            new_task_estimate: String::new(),
             task_progress: Vec::new(),
             show_new_goal: false,
             show_new_category: false,
@@ -205,6 +210,8 @@ impl MinActionApp {
             draft_frequency_interval: String::new(),
             reset_target: None,
             reset_level: 0,
+            estimate_target: None,
+            draft_estimate: String::new(),
             error: None,
             ticks,
             popup: Arc::new(Mutex::new(PopupState::default())),
@@ -550,6 +557,7 @@ impl eframe::App for MinActionApp {
         self.ui_new_category_dialog(&ctx);
         self.ui_rename_dialog(&ctx);
         self.ui_frequency_dialog(&ctx);
+        self.ui_estimate_dialog(&ctx);
         self.ui_reset_dialog(&ctx);
         self.ui_delete_dialog(&ctx);
     }

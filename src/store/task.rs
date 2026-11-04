@@ -192,6 +192,36 @@ impl Store {
         Ok(())
     }
 
+    /// 更新任务的预计耗时。
+    ///
+    /// 传 `None` 表示清空估时。只改 `estimated_minutes`；名称、频率、状态
+    /// 与已生成的行动都不变。
+    ///
+    /// # Errors
+    ///
+    /// 任务不存在或已删除时返回 [`DomainError::NotFound`]。
+    pub fn update_task_estimated_minutes(
+        &self,
+        id: TaskId,
+        minutes: Option<u16>,
+    ) -> Result<(), DomainError> {
+        let mut trace = OpTrace::begin("update_task_estimated_minutes");
+        let connection = self.guard();
+        let updated = connection.execute(
+            "UPDATE tasks SET estimated_minutes = ?2
+              WHERE id = ?1 AND deleted_at IS NULL",
+            params![id.0, minutes],
+        )?;
+        if updated == 0 {
+            return Err(DomainError::NotFound {
+                entity: "任务",
+                id: id.0,
+            });
+        }
+        trace.ok();
+        Ok(())
+    }
+
     /// 某任务尚未结算的行动数量（`pending` 与 `deferred`）。
     ///
     /// 用于删除确认弹窗说明影响范围；已结算的行动不计入。任务不存在或已删除

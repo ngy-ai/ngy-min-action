@@ -659,3 +659,48 @@ fn update_task_frequency_rejects_deleted_task() {
         "应返回 NotFound，实际为 {error:?}"
     );
 }
+
+#[test]
+fn update_task_estimated_minutes_sets_and_clears_the_value() {
+    let store = open_store("update-estimate");
+    let goal = store.create_goal("学习英语", None).expect("创建目标");
+    let category = store.create_category(goal, "口语").expect("创建分类");
+    let task = store
+        .create_task(category, draft("连读"))
+        .expect("创建任务");
+
+    store
+        .update_task_estimated_minutes(task, Some(25))
+        .expect("设置耗时");
+    let tasks = store.tasks(category).expect("列出任务");
+    assert_eq!(tasks[0].estimated_minutes, Some(25));
+    assert_eq!(tasks[0].name, "连读", "名称不应变化");
+    assert_eq!(tasks[0].frequency, Frequency::Daily, "频率不应变化");
+    assert_eq!(tasks[0].status, TaskStatus::Active, "状态不应变化");
+
+    store
+        .update_task_estimated_minutes(task, None)
+        .expect("清空耗时");
+    let tasks = store.tasks(category).expect("列出任务");
+    assert_eq!(tasks[0].estimated_minutes, None, "清空后应为未估时");
+    assert_eq!(tasks[0].name, "连读", "清空耗时不应影响其它字段");
+}
+
+#[test]
+fn update_task_estimated_minutes_rejects_deleted_task() {
+    let store = open_store("update-estimate-deleted");
+    let goal = store.create_goal("学习英语", None).expect("创建目标");
+    let category = store.create_category(goal, "口语").expect("创建分类");
+    let task = store
+        .create_task(category, draft("连读"))
+        .expect("创建任务");
+    store.delete_task(task).expect("删除任务");
+
+    let error = store
+        .update_task_estimated_minutes(task, Some(10))
+        .expect_err("已删除任务必须拒绝");
+    assert!(
+        matches!(error, DomainError::NotFound { .. }),
+        "应返回 NotFound，实际为 {error:?}"
+    );
+}
