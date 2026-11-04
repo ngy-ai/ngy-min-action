@@ -3,8 +3,12 @@
 //! 界面不做业务判断，只调用 `store` 与 `schedule` 并把结果摆出来；
 //! 跨日推进由后台 tokio 任务的 tick 驱动，界面侧只负责重绘。
 
+mod delete_dialog;
 mod main_view;
 mod popup;
+mod rename_dialog;
+#[cfg(test)]
+mod tests;
 mod today_view;
 
 use std::collections::HashSet;
@@ -19,7 +23,8 @@ use tracing::{debug, info, warn};
 use crate::clock::Clock;
 use crate::common::elapsed_ms;
 use crate::model::{
-    Action, Category, CategoryId, DeletionImpact, Goal, GoalId, ReminderState, ReviewProgress, Task,
+    Action, Category, CategoryId, DeletionImpact, Goal, GoalId, ReminderState, ReviewProgress,
+    Task, TaskId,
 };
 use crate::store::Store;
 
@@ -49,12 +54,25 @@ pub struct PopupState {
 }
 
 /// 等待用户确认的删除目标。
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PendingDelete {
     /// 待删除的目标。
     Goal(GoalId),
     /// 待删除的分类。
     Category(CategoryId),
+    /// 待删除的任务。
+    Task(TaskId),
+}
+
+/// 等待用户提交的重命名对象。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RenameTarget {
+    /// 待重命名的目标。
+    Goal(GoalId),
+    /// 待重命名的分类。
+    Category(CategoryId),
+    /// 待重命名的任务。
+    Task(TaskId),
 }
 
 /// 新建任务时可选的频率模式。
@@ -125,6 +143,9 @@ pub struct MinActionApp {
     pub(crate) root_collapsed: bool,
     pub(crate) pending_delete: Option<PendingDelete>,
     pub(crate) delete_impact: Option<DeletionImpact>,
+    pub(crate) rename_target: Option<RenameTarget>,
+    pub(crate) draft_rename_name: String,
+    pub(crate) rename_select_all: bool,
     pub(crate) error: Option<String>,
     pub(crate) ticks: Receiver<TickEvent>,
     pub(crate) popup: Arc<Mutex<PopupState>>,
@@ -169,6 +190,9 @@ impl MinActionApp {
             root_collapsed: false,
             pending_delete: None,
             delete_impact: None,
+            rename_target: None,
+            draft_rename_name: String::new(),
+            rename_select_all: false,
             error: None,
             ticks,
             popup: Arc::new(Mutex::new(PopupState::default())),
@@ -512,6 +536,7 @@ impl eframe::App for MinActionApp {
 
         self.ui_new_goal_dialog(&ctx);
         self.ui_new_category_dialog(&ctx);
+        self.ui_rename_dialog(&ctx);
         self.ui_delete_dialog(&ctx);
     }
 }

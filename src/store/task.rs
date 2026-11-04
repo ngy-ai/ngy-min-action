@@ -162,6 +162,27 @@ impl Store {
         Ok(())
     }
 
+    /// 某任务尚未结算的行动数量（`pending` 与 `deferred`）。
+    ///
+    /// 用于删除确认弹窗说明影响范围；已结算的行动不计入。任务不存在或已删除
+    /// 时返回 0，不视为错误。
+    ///
+    /// # Errors
+    ///
+    /// 读写失败时返回 [`DomainError::Store`]。
+    pub fn task_open_actions(&self, task: TaskId) -> Result<usize, DomainError> {
+        let mut trace = OpTrace::begin("task_open_actions");
+        let connection = self.guard();
+        let count: i64 = connection.query_row(
+            "SELECT COUNT(*) FROM actions
+              WHERE task_id = ?1 AND status IN ('pending', 'deferred')",
+            params![task.0],
+            |row| row.get(0),
+        )?;
+        trace.ok();
+        Ok(usize::try_from(count).unwrap_or_default())
+    }
+
     /// 软删除任务，其未完成行动转为过期。
     ///
     /// # Errors
