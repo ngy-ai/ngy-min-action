@@ -21,6 +21,7 @@ mod rename;
 mod render;
 mod reset;
 mod stats;
+mod theme;
 
 fn today() -> NaiveDate {
     NaiveDate::from_ymd_opt(2026, 11, 4).expect("测试日期必须合法")

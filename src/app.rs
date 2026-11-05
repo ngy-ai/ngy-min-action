@@ -13,6 +13,7 @@ mod reset_dialog;
 mod stats_dialog;
 #[cfg(test)]
 mod tests;
+mod theme;
 mod today_view;
 
 use std::collections::HashSet;
