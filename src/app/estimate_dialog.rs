@@ -3,6 +3,7 @@
 use eframe::egui;
 
 use crate::app::MinActionApp;
+use crate::app::theme;
 use crate::model::{DomainError, MAX_ESTIMATED_MINUTES, TaskId, validate_estimated_minutes};
 
 impl MinActionApp {
@@ -41,7 +42,7 @@ impl MinActionApp {
                 ));
                 ui.add_space(12.0);
                 ui.horizontal(|ui| {
-                    if ui.button("保存").clicked() {
+                    if theme::primary_button(ui, "保存").clicked() {
                         save = true;
                     }
                     if ui.button("取消").clicked() {

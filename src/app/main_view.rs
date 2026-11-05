@@ -5,6 +5,7 @@
 
 use eframe::egui;
 
+use crate::app::theme;
 use crate::app::{FrequencyMode, MinActionApp, PendingDelete, RenameTarget};
 use crate::model::{CategoryId, Frequency, GoalId, TaskDraft, TaskStatus};
 
@@ -79,7 +80,10 @@ impl MinActionApp {
                         if ui.small_button("改名").clicked() {
                             rename = Some((RenameTarget::Goal(goal.id), goal.name.clone()));
                         }
-                        if ui.small_button("×").on_hover_text("删除目标").clicked() {
+                        if theme::danger(ui, |ui| ui.small_button("×"))
+                            .on_hover_text("删除目标")
+                            .clicked()
+                        {
                             drop_goal = Some(goal.id);
                         }
                     });
@@ -107,7 +111,10 @@ impl MinActionApp {
                                     category.name.clone(),
                                 ));
                             }
-                            if ui.small_button("×").on_hover_text("删除分类").clicked() {
+                            if theme::danger(ui, |ui| ui.small_button("×"))
+                                .on_hover_text("删除分类")
+                                .clicked()
+                            {
                                 drop_category = Some(category.id);
                             }
                         });
@@ -200,7 +207,7 @@ impl MinActionApp {
                         egui::TextEdit::singleline(&mut self.new_task_estimate).desired_width(56.0),
                     );
                     ui.label("分钟");
-                    create_task = ui.button("添加").clicked();
+                    create_task = theme::primary_button(ui, "添加").clicked();
                 });
                 ui.horizontal(|ui| {
                     ui.label("频率");
@@ -306,7 +313,10 @@ impl MinActionApp {
                             rename = Some((RenameTarget::Task(task.id), task.name.clone()));
                         }
                         ui.add_space(8.0);
-                        if ui.small_button("×").on_hover_text("删除任务").clicked() {
+                        if theme::danger(ui, |ui| ui.small_button("×"))
+                            .on_hover_text("删除任务")
+                            .clicked()
+                        {
                             drop_task = Some(task.id);
                         }
                     });
@@ -376,7 +386,7 @@ impl MinActionApp {
                 ui.weak("例如「学习英语」。目标下可以再建分类。");
                 ui.add_space(12.0);
                 ui.horizontal(|ui| {
-                    if ui.button("创建").clicked() {
+                    if theme::primary_button(ui, "创建").clicked() {
                         submit = true;
                     }
                     if ui.button("取消").clicked() {
@@ -450,7 +460,7 @@ impl MinActionApp {
                 ui.weak("例如「口语」。同一目标下分类名不能重复。");
                 ui.add_space(12.0);
                 ui.horizontal(|ui| {
-                    if ui.button("创建").clicked() {
+                    if theme::primary_button(ui, "创建").clicked() {
                         submit = true;
                     }
                     if ui.button("取消").clicked() {

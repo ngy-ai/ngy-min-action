@@ -4,6 +4,7 @@ use eframe::egui;
 
 use super::*;
 use crate::app::theme::{contrast_ratio, preference, style_for};
+use crate::app::{PendingDelete, RenameTarget};
 use crate::model::ThemeChoice;
 
 #[test]
@@ -113,6 +114,46 @@ fn status_bar_and_stats_dialog_render_in_both_themes() {
             app.status_bar(ui);
             let inner = ui.ctx().clone();
             app.ui_stats_dialog(&inner);
+        });
+        output.textures_delta.clear();
+    }
+}
+
+#[test]
+fn every_dialog_renders_in_both_themes() {
+    let mut app = open_app("theme-dialogs-all");
+    let category = seed_category(&mut app, "学习英语", "口语");
+    let task = app
+        .store
+        .create_task(category, draft("连读"))
+        .expect("创建任务");
+    app.reload().expect("刷新界面数据");
+    let frequency = app.tasks[0].frequency;
+
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    app.show_new_goal = true;
+    app.show_new_category = true;
+    app.open_rename_dialog(RenameTarget::Task(task), "连读");
+    app.request_delete(PendingDelete::Task(task));
+    app.open_frequency_dialog(task, frequency);
+    app.open_estimate_dialog(task, None);
+    app.request_reset(task);
+    app.open_stats();
+
+    for choice in [ThemeChoice::Light, ThemeChoice::Dark] {
+        ctx.set_theme(preference(choice));
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            app.status_bar(ui);
+            let inner = ui.ctx().clone();
+            app.ui_new_goal_dialog(&inner);
+            app.ui_new_category_dialog(&inner);
+            app.ui_rename_dialog(&inner);
+            app.ui_frequency_dialog(&inner);
+            app.ui_estimate_dialog(&inner);
+            app.ui_reset_dialog(&inner);
+            app.ui_stats_dialog(&inner);
+            app.ui_delete_dialog(&inner);
         });
         output.textures_delta.clear();
     }
