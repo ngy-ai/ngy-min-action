@@ -16,7 +16,7 @@
 
 **Purpose**: 确认技术前提与逐按钮映射
 
-- [ ] T001 核对当前分支为 `010-icon-buttons`、`Cargo.toml` 不新增依赖，并把 `contracts/icon-buttons.md` 的逐按钮映射作为替换时的唯一依据
+- [x] T001 核对当前分支为 `010-icon-buttons`、`Cargo.toml` 不新增依赖，并把 `contracts/icon-buttons.md` 的逐按钮映射作为替换时的唯一依据
 
 ---
 
@@ -26,9 +26,9 @@
 
 **⚠️ CRITICAL**: 本阶段完成前不开始任何用户故事
 
-- [ ] T002 [P] 在 `src/app/tests/icons.rs` 写失败用例并在 `src/app/tests.rs` 注册 `mod icons;`：映射表每项形状与提示文案非空、危险语义只出现在危险操作、两套主题下含图标的界面渲染一帧不 panic、点击图标后业务状态与替换前一致
-- [ ] T003 在 `src/app/icons.rs` 实现 `Icon` 枚举、`IconButton`（固定 34×26 命中区域、`on_hover_text`、普通／主要／危险语义）与 13 种线条形状绘制，颜色只取 `text_color()` / `error_fg_color()`
-- [ ] T004 在 `src/app.rs` 挂载 `mod icons;`，并确认 `cargo clippy --all-targets --all-features -- -D warnings` 无死代码
+- [x] T002 [P] 在 `src/app/tests/icons.rs` 写失败用例并在 `src/app/tests.rs` 注册 `mod icons;`：映射表每项形状与提示文案非空、危险语义只出现在危险操作、两套主题下含图标的界面渲染一帧不 panic、点击图标后业务状态与替换前一致
+- [x] T003 在 `src/app/icons.rs` 实现 `Icon` 枚举、`IconButton`（固定 34×26 命中区域、`on_hover_text`、普通／主要／危险语义）与 13 种线条形状绘制，颜色只取 `text_color()` / `error_fg_color()`
+- [x] T004 在 `src/app.rs` 挂载 `mod icons;`，并确认 `cargo clippy --all-targets --all-features -- -D warnings` 无死代码
 
 ---
 
@@ -38,11 +38,11 @@
 
 **Independent Test**: 既有 headless 用例 + 新增图标点击用例；逐屏截图确认无文字残留
 
-- [ ] T005 [US1] 在 `src/app/status_bar.rs` 与 `src/app/popup.rs` 把「统计」「知道了」「查看今日清单」换成 `IconButton`
-- [ ] T006 [US1] 在 `src/app/main_view.rs` 把结构树、任务行与新建弹窗的全部操作按钮换成 `IconButton`，保留 `selectable_label` 选项与表单文字
-- [ ] T007 [US1] 在 `src/app/today_view.rs` 把「完成」「跳过」「撤销」换成 `IconButton`，保持行动描述与状态文案为文字
-- [ ] T008 [US1] 在 `src/app/rename_dialog.rs`、`frequency_dialog.rs`、`estimate_dialog.rs`、`delete_dialog.rs`、`reset_dialog.rs`、`stats_dialog.rs` 把保存／取消／删除／重置／关闭换成 `IconButton`
-- [ ] T009 [US1] 在 `src/app/theme.rs` 删除替换后不再有消费者的 `danger` / `primary_button`，避免死代码
+- [x] T005 [US1] 在 `src/app/status_bar.rs` 与 `src/app/popup.rs` 把「统计」「知道了」「查看今日清单」换成 `IconButton`
+- [x] T006 [US1] 在 `src/app/main_view.rs` 把结构树、任务行与新建弹窗的全部操作按钮换成 `IconButton`，保留 `selectable_label` 选项与表单文字
+- [x] T007 [US1] 在 `src/app/today_view.rs` 把「完成」「跳过」「撤销」换成 `IconButton`，保持行动描述与状态文案为文字
+- [x] T008 [US1] 在 `src/app/rename_dialog.rs`、`frequency_dialog.rs`、`estimate_dialog.rs`、`delete_dialog.rs`、`reset_dialog.rs`、`stats_dialog.rs` 把保存／取消／删除／重置／关闭换成 `IconButton`
+- [x] T009 [US1] 在 `src/app/theme.rs` 删除替换后不再有消费者的 `danger` / `primary_button`，避免死代码
 
 ---
 
@@ -52,7 +52,7 @@
 
 **Independent Test**: 映射表逐项核对；`git grep` 确认文字控件未被误替换
 
-- [ ] T010 [US2] 按 `contracts/icon-buttons.md` 逐项核对每个 `IconButton` 的悬停文案与语义级别，并确认主题三态下拉、表单标签、统计数值、空状态与错误提示仍是文字
+- [x] T010 [US2] 按 `contracts/icon-buttons.md` 逐项核对每个 `IconButton` 的悬停文案与语义级别，并确认主题三态下拉、表单标签、统计数值、空状态与错误提示仍是文字
 
 ---
 
@@ -62,17 +62,26 @@
 
 **Independent Test**: `src/app/tests/icons.rs` 的双主题渲染用例 + 两套 GUI 截图
 
-- [ ] T011 [US3] 在 `src/app/tests/icons.rs` 补用例：八个弹窗与今日清单在浅色、深色下各渲染一帧，且图标不引入新的 `Color32` 字面量
+- [x] T011 [US3] 在 `src/app/tests/icons.rs` 补用例：八个弹窗与今日清单在浅色、深色下各渲染一帧，且图标不引入新的 `Color32` 字面量
 
 ---
 
 ## Phase 6: Polish & Cross-Cutting Concerns
 
-- [ ] T012 用隔离的 `%LOCALAPPDATA%` 起 GUI，按 `specs/010-icon-buttons/quickstart.md` 走场景 1~4，浅色／深色各截图并记录排版结论
-- [ ] T013 跑通 `cargo fmt --check`、`cargo clippy --all-targets --all-features -- -D warnings`、`cargo test --all-targets --all-features`、`cargo machete`、`cargo audit`，并用 `git grep -nE 'Color32::' -- src` 与 `git diff main -- Cargo.toml` 复核约束
-- [ ] T014 勾选本清单、填写验收记录，按逻辑拆分提交并写 PR 描述（含宪法条款复核与单开发者仓库自我证明）
+- [x] T012 用隔离的 `%LOCALAPPDATA%` 起 GUI，按 `specs/010-icon-buttons/quickstart.md` 走场景 1~4，浅色／深色各截图并记录排版结论
+- [x] T013 跑通 `cargo fmt --check`、`cargo clippy --all-targets --all-features -- -D warnings`、`cargo test --all-targets --all-features`、`cargo machete`、`cargo audit`，并用 `git grep -nE 'Color32::' -- src` 与 `git diff main -- Cargo.toml` 复核约束
+- [x] T014 勾选本清单、填写验收记录，按逻辑拆分提交并写 PR 描述（含宪法条款复核与单开发者仓库自我证明）
 
 ---
+
+## 验收记录
+
+- **测试先行**：T002 的 4 组用例先落地并观察到编译失败（`unresolved import crate::app::icons`、`cannot find function spec`），再实现 `src/app/icons.rs`；US3 的主视图双主题渲染用例是外观变更的回归防护，随实现一起落地
+- **GUI 截图**：截图时会话已锁定，全屏截图只得到 Windows 锁屏画面，改用 `PrintWindow`（`PW_RENDERFULLCONTENT`）捕获应用窗口，得到 `target/gui-010/dark-window.png` 与 `light-window.png`（隔离 `%LOCALAPPDATA%`、200 任务 × 90 天、release）。两套主题下加号、减号、折角、铅笔、对勾、跳过、回转箭头、柱状图等形状均完整可辨，无缺字符号；危险删除为语义红色，「已顺延」为语义警告色；顶栏主题下拉、表单标签、统计数值与空状态仍是文字；图标不重叠、不溢出
+- **截图手段**：截图阶段临时让 `MinActionApp::new` 自动打开统计面板，验收后已还原，`git diff` 确认源码零残留。统计面板底部操作区因 `PrintWindow` 按窗口矩形裁剪未入镜，弹窗图标由 009 的 `every_dialog_renders_in_both_themes` 与 `ButtonId::ALL` 双主题渲染用例覆盖
+- **未做的人工项**：未逐个悬停核对提示（映射表由单元测试遍历断言每个 `tip` 非空，并与 `contracts/icon-buttons.md` 逐项一致）；未单独截空状态与错误提示（仍为文字，沿用 009 的验证）
+- **规模偏差**：`plan.md` 估计 `src/app/icons.rs` < 250 行，`cargo fmt` 把 26 条映射展开成多行后实际 356 行，仍低于 600 行预警线；所有 `.rs` 均低于 600 行
+- **门禁**：`cargo fmt --check`、`cargo clippy --all-targets --all-features -- -D warnings`、`cargo test --all-targets --all-features`（库内 43 条 + 集成 76 条）、`cargo machete`、`cargo audit` 全部通过；`git grep -nE 'Color32::' -- src` 只在 `src/app/theme.rs` 命中；`git grep -nE 'ui\.button\(|ui\.small_button\(' -- src/app` 无残留；`git diff main -- Cargo.toml` 为空
 
 ## Dependencies
 
