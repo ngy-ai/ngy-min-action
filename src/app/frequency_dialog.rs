@@ -2,7 +2,7 @@
 
 use eframe::egui;
 
-use crate::app::theme;
+use crate::app::icons::{self, ButtonId};
 use crate::app::{FrequencyMode, MinActionApp};
 use crate::model::{Frequency, TaskId};
 
@@ -64,10 +64,10 @@ impl MinActionApp {
                 ui.weak("改频率不影响已经生成的行动，下一次生成按新间隔判定。");
                 ui.add_space(12.0);
                 ui.horizontal(|ui| {
-                    if theme::primary_button(ui, "保存").clicked() {
+                    if icons::add(ui, ButtonId::Save).clicked() {
                         save = true;
                     }
-                    if ui.button("取消").clicked() {
+                    if icons::add(ui, ButtonId::Cancel).clicked() {
                         cancel = true;
                     }
                 });

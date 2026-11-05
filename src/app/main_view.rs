@@ -5,7 +5,7 @@
 
 use eframe::egui;
 
-use crate::app::theme;
+use crate::app::icons::{self, ButtonId};
 use crate::app::{FrequencyMode, MinActionApp, PendingDelete, RenameTarget};
 use crate::model::{CategoryId, Frequency, GoalId, TaskDraft, TaskStatus};
 
@@ -14,21 +14,21 @@ impl MinActionApp {
         ui.horizontal(|ui| {
             ui.heading("目标与分类");
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.small_button("＋分类").clicked() {
+                if icons::add(ui, ButtonId::AddCategory).clicked() {
                     self.open_new_category_dialog();
                 }
-                if ui.small_button("＋目标").clicked() {
+                if icons::add(ui, ButtonId::AddGoal).clicked() {
                     self.open_new_goal_dialog();
                 }
             });
         });
 
         ui.horizontal(|ui| {
-            if ui.small_button("全部展开").clicked() {
+            if icons::add(ui, ButtonId::ExpandAll).clicked() {
                 self.collapsed_goals.clear();
                 self.root_collapsed = false;
             }
-            if ui.small_button("全部折叠").clicked() {
+            if icons::add(ui, ButtonId::CollapseAll).clicked() {
                 self.collapsed_goals = self.goals.iter().map(|goal| goal.id).collect();
                 self.root_collapsed = true;
             }
@@ -47,8 +47,12 @@ impl MinActionApp {
             .id_salt("structure-tree")
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    let arrow = if self.root_collapsed { "▸" } else { "▾" };
-                    if ui.small_button(arrow).clicked() {
+                    let arrow = if self.root_collapsed {
+                        ButtonId::ChevronRight
+                    } else {
+                        ButtonId::ChevronDown
+                    };
+                    if icons::add(ui, arrow).clicked() {
                         toggle_root = true;
                     }
                     ui.label(format!("全部（{} 个目标）", self.goals.len()));
@@ -61,7 +65,7 @@ impl MinActionApp {
                 if self.goals.is_empty() {
                     ui.horizontal(|ui| {
                         ui.add_space(18.0);
-                        ui.weak("还没有目标，先点右上角「＋目标」。");
+                        ui.weak("还没有目标，先点右上角的添加目标按钮。");
                     });
                 }
 
@@ -70,20 +74,21 @@ impl MinActionApp {
                     let selected = self.selected_goal == Some(goal.id);
                     ui.horizontal(|ui| {
                         ui.add_space(12.0);
-                        let arrow = if expanded { "▾" } else { "▸" };
-                        if ui.small_button(arrow).clicked() {
+                        let arrow = if expanded {
+                            ButtonId::ChevronDown
+                        } else {
+                            ButtonId::ChevronRight
+                        };
+                        if icons::add(ui, arrow).clicked() {
                             toggle_goal = Some(goal.id);
                         }
                         if ui.selectable_label(selected, &goal.name).clicked() {
                             select_goal = Some(goal.id);
                         }
-                        if ui.small_button("改名").clicked() {
+                        if icons::add(ui, ButtonId::Rename).clicked() {
                             rename = Some((RenameTarget::Goal(goal.id), goal.name.clone()));
                         }
-                        if theme::danger(ui, |ui| ui.small_button("×"))
-                            .on_hover_text("删除目标")
-                            .clicked()
-                        {
+                        if icons::add(ui, ButtonId::DeleteGoal).clicked() {
                             drop_goal = Some(goal.id);
                         }
                     });
@@ -105,16 +110,13 @@ impl MinActionApp {
                             if ui.selectable_label(picked, &category.name).clicked() {
                                 select_category = Some(category.id);
                             }
-                            if ui.small_button("改名").clicked() {
+                            if icons::add(ui, ButtonId::Rename).clicked() {
                                 rename = Some((
                                     RenameTarget::Category(category.id),
                                     category.name.clone(),
                                 ));
                             }
-                            if theme::danger(ui, |ui| ui.small_button("×"))
-                                .on_hover_text("删除分类")
-                                .clicked()
-                            {
+                            if icons::add(ui, ButtonId::DeleteCategory).clicked() {
                                 drop_category = Some(category.id);
                             }
                         });
@@ -207,7 +209,7 @@ impl MinActionApp {
                         egui::TextEdit::singleline(&mut self.new_task_estimate).desired_width(56.0),
                     );
                     ui.label("分钟");
-                    create_task = theme::primary_button(ui, "添加").clicked();
+                    create_task = icons::add(ui, ButtonId::AddTask).clicked();
                 });
                 ui.horizontal(|ui| {
                     ui.label("频率");
@@ -295,28 +297,25 @@ impl MinActionApp {
                             },
                         };
                         ui.label(progress_text);
-                        let label = match task.status {
-                            TaskStatus::Active => "暂停",
-                            TaskStatus::Paused => "恢复",
+                        let toggle_button = match task.status {
+                            TaskStatus::Active => ButtonId::Pause,
+                            TaskStatus::Paused => ButtonId::Resume,
                         };
-                        if ui.small_button(label).clicked() {
+                        if icons::add(ui, toggle_button).clicked() {
                             let next = match task.status {
                                 TaskStatus::Active => TaskStatus::Paused,
                                 TaskStatus::Paused => TaskStatus::Active,
                             };
                             toggle = Some((task.id, next));
                         }
-                        if ui.small_button("重置复习").clicked() {
+                        if icons::add(ui, ButtonId::ResetProgress).clicked() {
                             reset = Some(task.id);
                         }
-                        if ui.small_button("改名").clicked() {
+                        if icons::add(ui, ButtonId::Rename).clicked() {
                             rename = Some((RenameTarget::Task(task.id), task.name.clone()));
                         }
                         ui.add_space(8.0);
-                        if theme::danger(ui, |ui| ui.small_button("×"))
-                            .on_hover_text("删除任务")
-                            .clicked()
-                        {
+                        if icons::add(ui, ButtonId::DeleteTask).clicked() {
                             drop_task = Some(task.id);
                         }
                     });
@@ -386,10 +385,10 @@ impl MinActionApp {
                 ui.weak("例如「学习英语」。目标下可以再建分类。");
                 ui.add_space(12.0);
                 ui.horizontal(|ui| {
-                    if theme::primary_button(ui, "创建").clicked() {
+                    if icons::add(ui, ButtonId::Create).clicked() {
                         submit = true;
                     }
-                    if ui.button("取消").clicked() {
+                    if icons::add(ui, ButtonId::Cancel).clicked() {
                         cancel = true;
                     }
                 });
@@ -460,10 +459,10 @@ impl MinActionApp {
                 ui.weak("例如「口语」。同一目标下分类名不能重复。");
                 ui.add_space(12.0);
                 ui.horizontal(|ui| {
-                    if theme::primary_button(ui, "创建").clicked() {
+                    if icons::add(ui, ButtonId::Create).clicked() {
                         submit = true;
                     }
-                    if ui.button("取消").clicked() {
+                    if icons::add(ui, ButtonId::Cancel).clicked() {
                         cancel = true;
                     }
                 });

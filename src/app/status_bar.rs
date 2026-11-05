@@ -5,6 +5,7 @@ use std::time::Instant;
 use eframe::egui;
 use tracing::{info, warn};
 
+use crate::app::icons::{self, ButtonId};
 use crate::app::{MinActionApp, theme};
 use crate::model::ThemeChoice;
 
@@ -86,7 +87,7 @@ impl MinActionApp {
                 self.set_theme(choice, ui.ctx());
             }
             ui.separator();
-            if ui.button("统计").clicked() {
+            if icons::add(ui, ButtonId::OpenStats).clicked() {
                 self.open_stats();
             }
         });
@@ -95,7 +96,7 @@ impl MinActionApp {
             ui.horizontal(|ui| {
                 let danger = ui.visuals().error_fg_color;
                 ui.colored_label(danger, message);
-                if ui.small_button("知道了").clicked() {
+                if icons::add(ui, ButtonId::Confirm).clicked() {
                     self.error = None;
                 }
             });

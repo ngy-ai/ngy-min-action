@@ -44,26 +44,6 @@ pub(crate) fn style_for(theme: egui::Theme) -> egui::Style {
     style
 }
 
-/// 用危险语义色渲染按钮，保持原有尺寸与点击行为。
-pub(crate) fn danger(
-    ui: &mut egui::Ui,
-    add: impl FnOnce(&mut egui::Ui) -> egui::Response,
-) -> egui::Response {
-    let color = ui.visuals().error_fg_color;
-    ui.scope(|ui| {
-        ui.visuals_mut().widgets.inactive.fg_stroke.color = color;
-        ui.visuals_mut().widgets.active.fg_stroke.color = color;
-        ui.visuals_mut().widgets.hovered.fg_stroke.color = color;
-        add(ui)
-    })
-    .inner
-}
-
-/// 主要操作按钮：以加粗文字与次要操作区分。
-pub(crate) fn primary_button(ui: &mut egui::Ui, text: &str) -> egui::Response {
-    ui.button(egui::RichText::new(text).strong())
-}
-
 /// 把两套样式注册到界面上下文，供主题切换时自动选择。
 pub(crate) fn apply_styles(ctx: &egui::Context) {
     for theme in [egui::Theme::Dark, egui::Theme::Light] {

@@ -8,6 +8,7 @@ use std::sync::Mutex;
 
 use eframe::egui;
 
+use crate::app::icons::{self, ButtonId};
 use crate::app::{MinActionApp, PopupState};
 
 impl MinActionApp {
@@ -35,7 +36,7 @@ impl MinActionApp {
                 egui::CentralPanel::default().show(ctx, |ui| {
                     ui.heading(format!("今天有 {pending} 条最小行动待完成"));
                     ui.add_space(12.0);
-                    if ui.button("查看今日清单").clicked() {
+                    if icons::add(ui, ButtonId::ViewToday).clicked() {
                         dismiss(&shared);
                     }
                 });

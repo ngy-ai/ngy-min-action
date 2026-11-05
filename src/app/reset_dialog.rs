@@ -3,7 +3,7 @@
 use eframe::egui;
 
 use crate::app::MinActionApp;
-use crate::app::theme;
+use crate::app::icons::{self, ButtonId};
 use crate::model::TaskId;
 
 impl MinActionApp {
@@ -45,10 +45,10 @@ impl MinActionApp {
                 ui.weak("已完成的行动记录会保留，复习计划从头开始。");
                 ui.add_space(12.0);
                 ui.horizontal(|ui| {
-                    if theme::danger(ui, |ui| theme::primary_button(ui, "重置")).clicked() {
+                    if icons::add(ui, ButtonId::ResetConfirm).clicked() {
                         confirm = true;
                     }
-                    if ui.button("取消").clicked() {
+                    if icons::add(ui, ButtonId::Cancel).clicked() {
                         cancel = true;
                     }
                 });

@@ -3,6 +3,7 @@
 use eframe::egui;
 
 use crate::app::MinActionApp;
+use crate::app::icons::{self, ButtonId};
 
 /// 完成率的统计窗口（含今天）。
 const STATS_WINDOW_DAYS: u32 = 30;
@@ -77,7 +78,7 @@ impl MinActionApp {
                 }
 
                 ui.add_space(12.0);
-                if ui.button("关闭").clicked() {
+                if icons::add(ui, ButtonId::Close).clicked() {
                     close = true;
                 }
             });
