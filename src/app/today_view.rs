@@ -3,6 +3,7 @@
 use eframe::egui;
 
 use crate::app::MinActionApp;
+use crate::app::icons::{self, ButtonId};
 use crate::model::{Action, ActionId, ActionKind, ActionStatus};
 
 impl MinActionApp {
@@ -27,15 +28,16 @@ impl MinActionApp {
                         ui.horizontal(|ui| {
                             ui.label(text);
                             if action.status == ActionStatus::Pending {
-                                if ui.small_button("完成").clicked() {
+                                if icons::add(ui, ButtonId::Done).clicked() {
                                     settle = Some((action.id, ActionStatus::Done));
                                 }
-                                if ui.small_button("跳过").clicked() {
+                                if icons::add(ui, ButtonId::Skip).clicked() {
                                     settle = Some((action.id, ActionStatus::Skipped));
                                 }
                             } else {
                                 ui.label(status_text(action.status));
-                                if action.status.is_settled() && ui.small_button("撤销").clicked()
+                                if action.status.is_settled()
+                                    && icons::add(ui, ButtonId::Undo).clicked()
                                 {
                                     undo = Some(action.id);
                                 }

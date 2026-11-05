@@ -17,6 +17,7 @@ use crate::store::Store;
 mod delete;
 mod estimate;
 mod frequency;
+mod icons;
 mod rename;
 mod render;
 mod reset;

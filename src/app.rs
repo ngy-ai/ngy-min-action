@@ -6,6 +6,7 @@
 mod delete_dialog;
 mod estimate_dialog;
 mod frequency_dialog;
+mod icons;
 mod main_view;
 mod popup;
 mod rename_dialog;
