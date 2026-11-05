@@ -60,7 +60,17 @@ pub(crate) fn preference(choice: ThemeChoice) -> egui::ThemePreference {
     }
 }
 
+/// 主题选择在界面上的文案。
+pub(crate) fn label(choice: ThemeChoice) -> &'static str {
+    match choice {
+        ThemeChoice::System => "跟随系统",
+        ThemeChoice::Light => "浅色",
+        ThemeChoice::Dark => "深色",
+    }
+}
+
 /// WCAG 相对亮度对比度；用于自动验证两套令牌的可读性。
+#[cfg(test)]
 pub(crate) fn contrast_ratio(foreground: Color32, background: Color32) -> f32 {
     fn luminance(color: Color32) -> f32 {
         let channels = [color.r(), color.g(), color.b()].map(|value| {

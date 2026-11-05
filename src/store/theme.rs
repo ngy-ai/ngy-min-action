@@ -27,7 +27,17 @@ impl Store {
             )
             .optional()?;
         let choice = raw
-            .map(|value| ThemeChoice::parse(&value))
+            .map(|value| {
+                let parsed = ThemeChoice::parse(&value);
+                if value.trim() != parsed.as_str() {
+                    tracing::warn!(
+                        op = "theme_choice",
+                        result = "unknown_value",
+                        "主题偏好取值无法识别，已回退跟随系统"
+                    );
+                }
+                parsed
+            })
             .unwrap_or_default();
         trace.ok();
         Ok(choice)

@@ -29,7 +29,7 @@ use crate::clock::Clock;
 use crate::common::elapsed_ms;
 use crate::model::{
     Action, Category, CategoryId, DeletionImpact, Goal, GoalId, ReminderState, ReviewProgress,
-    ReviewStats, Task, TaskId,
+    ReviewStats, Task, TaskId, ThemeChoice,
 };
 use crate::store::Store;
 
@@ -161,6 +161,7 @@ pub struct MinActionApp {
     pub(crate) draft_estimate: String,
     pub(crate) show_stats: bool,
     pub(crate) stats: Option<ReviewStats>,
+    pub(crate) theme: ThemeChoice,
     pub(crate) error: Option<String>,
     pub(crate) ticks: Receiver<TickEvent>,
     pub(crate) popup: Arc<Mutex<PopupState>>,
@@ -178,6 +179,18 @@ impl MinActionApp {
         ticks: Receiver<TickEvent>,
     ) -> anyhow::Result<Self> {
         let today = clock.today();
+        let theme = match store.theme_choice() {
+            Ok(choice) => choice,
+            Err(error) => {
+                warn!(
+                    op = "theme_choice",
+                    result = "error",
+                    error = %error,
+                    "读取主题偏好失败，回退跟随系统"
+                );
+                ThemeChoice::System
+            }
+        };
         let mut app = MinActionApp {
             store,
             clock,
@@ -218,6 +231,7 @@ impl MinActionApp {
             draft_estimate: String::new(),
             show_stats: false,
             stats: None,
+            theme,
             error: None,
             ticks,
             popup: Arc::new(Mutex::new(PopupState::default())),
@@ -225,6 +239,44 @@ impl MinActionApp {
         app.reload()?;
         app.sync_popup();
         Ok(app)
+    }
+
+    /// 在首帧前注册两套样式并应用已保存的主题偏好。
+    ///
+    /// 由启动编排在创建窗口前调用，保证首帧不带默认外观；跟随系统时由框架注入系统主题。
+    pub fn apply_theme(&self, ctx: &egui::Context) {
+        theme::apply_styles(ctx);
+        ctx.set_theme(theme::preference(self.theme));
+    }
+
+    /// 切换主题并把选择写入本地设置。
+    ///
+    /// 写库失败时保留原偏好，只设置一条可关闭的错误提示；错误在界面边界记录一次。
+    pub(crate) fn set_theme(&mut self, choice: ThemeChoice, ctx: &egui::Context) {
+        let started = Instant::now();
+        match self.store.set_theme_choice(choice) {
+            Ok(()) => {
+                self.theme = choice;
+                ctx.set_theme(theme::preference(choice));
+                info!(
+                    op = "set_theme",
+                    result = "ok",
+                    theme = choice.as_str(),
+                    elapsed_ms = elapsed_ms(started),
+                    "主题已切换"
+                );
+            }
+            Err(error) => {
+                self.error = Some(format!("切换主题失败：{error}"));
+                warn!(
+                    op = "set_theme",
+                    result = "error",
+                    error = %error,
+                    elapsed_ms = elapsed_ms(started),
+                    "主题偏好写入失败"
+                );
+            }
+        }
     }
 
     /// 重新载入目标、分类、任务与当天行动。
@@ -468,10 +520,8 @@ impl MinActionApp {
             ui.label(format!("共 {} 条待完成", pending));
             if self.deferred > 0 {
                 ui.separator();
-                ui.colored_label(
-                    egui::Color32::from_rgb(0xC0, 0x6A, 0x00),
-                    format!("已顺延 {} 条", self.deferred),
-                );
+                let warning = ui.visuals().warn_fg_color;
+                ui.colored_label(warning, format!("已顺延 {} 条", self.deferred));
             }
             ui.separator();
             ui.label("每日上限");
@@ -517,6 +567,24 @@ impl MinActionApp {
                 }
             }
             ui.separator();
+            let mut chosen = None;
+            egui::ComboBox::from_id_salt("theme-choice")
+                .selected_text(theme::label(self.theme))
+                .width(96.0)
+                .show_ui(ui, |ui| {
+                    for value in [ThemeChoice::System, ThemeChoice::Light, ThemeChoice::Dark] {
+                        if ui
+                            .selectable_label(self.theme == value, theme::label(value))
+                            .clicked()
+                        {
+                            chosen = Some(value);
+                        }
+                    }
+                });
+            if let Some(choice) = chosen {
+                self.set_theme(choice, ui.ctx());
+            }
+            ui.separator();
             if ui.button("统计").clicked() {
                 self.open_stats();
             }
@@ -524,7 +592,8 @@ impl MinActionApp {
 
         if let Some(message) = self.error.clone() {
             ui.horizontal(|ui| {
-                ui.colored_label(egui::Color32::LIGHT_RED, message);
+                let danger = ui.visuals().error_fg_color;
+                ui.colored_label(danger, message);
                 if ui.small_button("知道了").clicked() {
                     self.error = None;
                 }

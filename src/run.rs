@@ -52,7 +52,10 @@ pub(crate) fn run() -> Result<()> {
     eframe::run_native(
         WINDOW_TITLE,
         options,
-        Box::new(move |_cc| Ok(Box::new(app))),
+        Box::new(move |cc| {
+            app.apply_theme(&cc.egui_ctx);
+            Ok(Box::new(app))
+        }),
     )
     .map_err(|error| anyhow::anyhow!("界面启动失败：{error}"))
 }
