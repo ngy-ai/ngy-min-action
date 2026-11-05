@@ -2,6 +2,7 @@
 
 use eframe::egui;
 
+use crate::app::theme;
 use crate::app::{MinActionApp, RenameTarget};
 
 /// 名称输入框的固定 ID，供打开弹窗时写入全选状态。
@@ -53,7 +54,7 @@ impl MinActionApp {
             ui.weak("校验失败时弹窗保留，可直接修改。");
             ui.add_space(12.0);
             ui.horizontal(|ui| {
-                if ui.button("保存").clicked() {
+                if theme::primary_button(ui, "保存").clicked() {
                     save = true;
                 }
                 if ui.button("取消").clicked() {

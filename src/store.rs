@@ -9,6 +9,7 @@ mod reminder;
 mod schema;
 mod stats;
 mod task;
+mod theme;
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};

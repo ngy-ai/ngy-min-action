@@ -3,6 +3,7 @@
 use eframe::egui;
 use tracing::warn;
 
+use crate::app::theme;
 use crate::app::{MinActionApp, PendingDelete};
 use crate::model::DeletionImpact;
 
@@ -90,7 +91,7 @@ impl MinActionApp {
             ui.weak("已完成的行动记录会保留。");
             ui.add_space(12.0);
             ui.horizontal(|ui| {
-                if ui.button("删除").clicked() {
+                if theme::danger(ui, |ui| theme::primary_button(ui, "删除")).clicked() {
                     confirm = true;
                 }
                 if ui.button("取消").clicked() {
