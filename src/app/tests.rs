@@ -14,6 +14,7 @@ use crate::clock::FixedClock;
 use crate::model::{CategoryId, Frequency, TaskDraft, TaskId};
 use crate::store::Store;
 
+mod context_menu;
 mod delete;
 mod estimate;
 mod frequency;

@@ -21,7 +21,7 @@ fn danger_semantics_are_limited_to_destructive_actions() {
         .copied()
         .filter(|id| icons::spec(*id).semantic == Semantic::Danger)
         .collect();
-    assert_eq!(danger.len(), 5, "危险语义应恰好覆盖五个破坏性操作");
+    assert_eq!(danger.len(), 3, "危险语义应恰好覆盖三个破坏性操作");
     for id in danger {
         let tip = icons::spec(id).tip;
         assert!(
