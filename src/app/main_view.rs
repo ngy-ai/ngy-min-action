@@ -6,6 +6,7 @@
 use eframe::egui;
 
 use crate::app::icons::{self, ButtonId};
+use crate::app::structure_menu;
 use crate::app::{FrequencyMode, MinActionApp, PendingDelete, RenameTarget};
 use crate::model::{CategoryId, Frequency, GoalId, TaskDraft, TaskStatus};
 
@@ -82,14 +83,24 @@ impl MinActionApp {
                         if icons::add(ui, arrow).clicked() {
                             toggle_goal = Some(goal.id);
                         }
-                        if ui.selectable_label(selected, &goal.name).clicked() {
+                        let name = ui
+                            .selectable_label(selected, &goal.name)
+                            .on_hover_text("左键选中，右键菜单");
+                        name.context_menu(|ui| {
+                            if let Some(action) = structure_menu::show(ui) {
+                                match action {
+                                    structure_menu::StructureAction::Rename => {
+                                        rename =
+                                            Some((RenameTarget::Goal(goal.id), goal.name.clone()));
+                                    }
+                                    structure_menu::StructureAction::Delete => {
+                                        drop_goal = Some(goal.id);
+                                    }
+                                }
+                            }
+                        });
+                        if name.clicked() {
                             select_goal = Some(goal.id);
-                        }
-                        if icons::add(ui, ButtonId::Rename).clicked() {
-                            rename = Some((RenameTarget::Goal(goal.id), goal.name.clone()));
-                        }
-                        if icons::add(ui, ButtonId::DeleteGoal).clicked() {
-                            drop_goal = Some(goal.id);
                         }
                     });
 
@@ -107,17 +118,26 @@ impl MinActionApp {
                         ui.horizontal(|ui| {
                             ui.add_space(40.0);
                             let picked = self.selected_category == Some(category.id);
-                            if ui.selectable_label(picked, &category.name).clicked() {
+                            let name = ui
+                                .selectable_label(picked, &category.name)
+                                .on_hover_text("左键选中，右键菜单");
+                            name.context_menu(|ui| {
+                                if let Some(action) = structure_menu::show(ui) {
+                                    match action {
+                                        structure_menu::StructureAction::Rename => {
+                                            rename = Some((
+                                                RenameTarget::Category(category.id),
+                                                category.name.clone(),
+                                            ));
+                                        }
+                                        structure_menu::StructureAction::Delete => {
+                                            drop_category = Some(category.id);
+                                        }
+                                    }
+                                }
+                            });
+                            if name.clicked() {
                                 select_category = Some(category.id);
-                            }
-                            if icons::add(ui, ButtonId::Rename).clicked() {
-                                rename = Some((
-                                    RenameTarget::Category(category.id),
-                                    category.name.clone(),
-                                ));
-                            }
-                            if icons::add(ui, ButtonId::DeleteCategory).clicked() {
-                                drop_category = Some(category.id);
                             }
                         });
                     }

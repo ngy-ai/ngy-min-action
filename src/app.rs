@@ -13,6 +13,7 @@ mod rename_dialog;
 mod reset_dialog;
 mod stats_dialog;
 mod status_bar;
+mod structure_menu;
 #[cfg(test)]
 mod tests;
 mod theme;

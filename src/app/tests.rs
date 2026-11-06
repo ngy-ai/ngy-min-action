@@ -1,8 +1,9 @@
 //! 界面层验收：按 quickstart 的场景驱动真实状态机。
 //!
 //! 用例按对象分文件：`rename`、`delete`、`frequency`、`reset`、`render`。
-//! 这里不模拟鼠标，而是直接调用界面行会触发的同一套方法（打开弹窗、提交、
-//! 请求删除、确认、取消），断言数据与弹窗状态。
+//! 多数用例不模拟鼠标，而是直接调用界面行会触发的同一套方法（打开弹窗、提交、
+//! 请求删除、确认、取消），断言数据与弹窗状态；`context_menu` 例外，用合成指针
+//! 事件验证右键菜单确实会打开。
 
 use std::sync::Arc;
 use std::sync::mpsc;
@@ -14,6 +15,7 @@ use crate::clock::FixedClock;
 use crate::model::{CategoryId, Frequency, TaskDraft, TaskId};
 use crate::store::Store;
 
+mod context_menu;
 mod delete;
 mod estimate;
 mod frequency;
