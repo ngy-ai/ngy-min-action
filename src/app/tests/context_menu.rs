@@ -52,6 +52,60 @@ fn structure_tree_with_context_menus_renders_in_both_themes() {
 }
 
 #[test]
+fn name_context_menu_opens_on_secondary_click() {
+    use std::cell::Cell;
+
+    let ctx = egui::Context::default();
+    theme::apply_styles(&ctx);
+    let rect = Cell::new(None);
+    let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+        let name = ui.selectable_label(false, "分类1");
+        rect.set(Some(name.rect));
+        name.context_menu(|menu| {
+            structure_menu::show(menu);
+        });
+    });
+    output.textures_delta.clear();
+
+    let center = rect.get().expect("名称控件必须先完成一帧布局").center();
+    let mut output = ctx.run_ui(
+        egui::RawInput {
+            events: vec![
+                egui::Event::PointerMoved(center),
+                egui::Event::PointerButton {
+                    pos: center,
+                    button: egui::PointerButton::Secondary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::default(),
+                },
+                egui::Event::PointerButton {
+                    pos: center,
+                    button: egui::PointerButton::Secondary,
+                    pressed: false,
+                    modifiers: egui::Modifiers::default(),
+                },
+            ],
+            ..Default::default()
+        },
+        |ui| {
+            ui.selectable_label(false, "分类1").context_menu(|menu| {
+                structure_menu::show(menu);
+            });
+        },
+    );
+    output.textures_delta.clear();
+
+    let opened = Cell::new(false);
+    let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+        ui.selectable_label(false, "分类1").context_menu(|_| {
+            opened.set(true);
+        });
+    });
+    output.textures_delta.clear();
+    assert!(opened.get(), "右键名称后菜单必须保持打开");
+}
+
+#[test]
 fn delete_item_uses_the_semantic_error_color() {
     let ctx = egui::Context::default();
     theme::apply_styles(&ctx);
