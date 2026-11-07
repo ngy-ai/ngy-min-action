@@ -45,7 +45,7 @@ fn main_views_with_icons_render_in_both_themes() {
     for choice in [ThemeChoice::Light, ThemeChoice::Dark] {
         ctx.set_theme(theme::preference(choice));
         let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
-            app.status_bar(ui);
+            app.toolbar(ui);
             app.ui_main_view(ui);
             app.ui_today_view(ui);
         });

@@ -4,22 +4,29 @@
 //! 跨日推进由后台 tokio 任务的 tick 驱动，界面侧只负责重绘。
 
 mod delete_dialog;
+mod describe;
 mod estimate_dialog;
 mod frequency_dialog;
+mod history_view;
 mod icons;
 mod main_view;
+mod menu_bar;
+mod note_dialog;
 mod popup;
 mod rename_dialog;
 mod reset_dialog;
 mod stats_dialog;
 mod status_bar;
+mod storage_dialog;
 mod structure_menu;
 #[cfg(test)]
 mod tests;
 mod theme;
 mod today_view;
+mod toolbar;
 
 use std::collections::HashSet;
+use std::path::PathBuf;
 use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -30,9 +37,10 @@ use tracing::{debug, info, warn};
 
 use crate::clock::Clock;
 use crate::common::elapsed_ms;
+use crate::config::Bootstrap;
 use crate::model::{
-    Action, Category, CategoryId, DeletionImpact, Goal, GoalId, ReminderState, ReviewProgress,
-    ReviewStats, Task, TaskId, ThemeChoice,
+    Action, ActionId, ActionImage, Category, CategoryId, DeletionImpact, Goal, GoalId,
+    ReminderState, ReviewProgress, ReviewStats, Task, TaskId, ThemeChoice,
 };
 use crate::store::Store;
 
@@ -123,6 +131,44 @@ impl FrequencyMode {
     }
 }
 
+/// 中央区页签。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TodoTab {
+    /// 今天触发的待办。
+    Today,
+    /// 今天之前的历史待办。
+    History,
+}
+
+/// 历史待办的内存页。
+#[derive(Debug, Default)]
+pub(crate) struct HistoryState {
+    pub(crate) actions: Vec<Action>,
+    pub(crate) cursor: Option<(NaiveDate, i64)>,
+    pub(crate) has_more: bool,
+    pub(crate) loaded: bool,
+    pub(crate) error: Option<String>,
+}
+
+/// 备注窗口的编辑状态。
+#[derive(Debug)]
+pub(crate) struct NoteEditor {
+    pub(crate) action: ActionId,
+    pub(crate) title: String,
+    pub(crate) text: String,
+    pub(crate) images: Vec<ActionImage>,
+    pub(crate) read_only: bool,
+    pub(crate) error: Option<String>,
+}
+
+/// 存储位置窗口的状态。
+#[derive(Debug, Default)]
+pub(crate) struct StorageDialog {
+    pub(crate) target: Option<PathBuf>,
+    pub(crate) error: Option<String>,
+    pub(crate) notice: Option<String>,
+}
+
 /// 应用状态。
 pub struct MinActionApp {
     pub(crate) store: Store,
@@ -168,6 +214,14 @@ pub struct MinActionApp {
     pub(crate) error: Option<String>,
     pub(crate) ticks: Receiver<TickEvent>,
     pub(crate) popup: Arc<Mutex<PopupState>>,
+    pub(crate) bootstrap: Bootstrap,
+    pub(crate) data_dir: PathBuf,
+    pub(crate) tab: TodoTab,
+    pub(crate) history: HistoryState,
+    pub(crate) note: Option<NoteEditor>,
+    pub(crate) show_storage: bool,
+    pub(crate) storage: StorageDialog,
+    pub(crate) show_about: bool,
 }
 
 impl MinActionApp {
@@ -180,8 +234,10 @@ impl MinActionApp {
         store: Store,
         clock: Arc<dyn Clock>,
         ticks: Receiver<TickEvent>,
+        bootstrap: Bootstrap,
     ) -> anyhow::Result<Self> {
         let today = clock.today();
+        let data_dir = store.data_dir().to_path_buf();
         let theme = match store.theme_choice() {
             Ok(choice) => choice,
             Err(error) => {
@@ -238,6 +294,14 @@ impl MinActionApp {
             error: None,
             ticks,
             popup: Arc::new(Mutex::new(PopupState::default())),
+            bootstrap,
+            data_dir,
+            tab: TodoTab::Today,
+            history: HistoryState::default(),
+            note: None,
+            show_storage: false,
+            storage: StorageDialog::default(),
+            show_about: false,
         };
         app.reload()?;
         app.sync_popup();
@@ -338,6 +402,43 @@ impl MinActionApp {
             "界面数据已刷新"
         );
         Ok(())
+    }
+
+    /// 切换中央区页签；首次进入历史时加载第一页。
+    pub(crate) fn switch_tab(&mut self, tab: TodoTab) {
+        self.tab = tab;
+        if tab == TodoTab::History {
+            self.ensure_history();
+        }
+    }
+
+    fn ui_tabs(&mut self, ui: &mut egui::Ui) {
+        let mut next = None;
+        ui.horizontal(|ui| {
+            if ui
+                .selectable_label(self.tab == TodoTab::Today, "今日待办")
+                .clicked()
+            {
+                next = Some(TodoTab::Today);
+            }
+            if ui
+                .selectable_label(self.tab == TodoTab::History, "历史待办")
+                .clicked()
+            {
+                next = Some(TodoTab::History);
+            }
+        });
+        if let Some(tab) = next {
+            self.switch_tab(tab);
+        }
+        ui.separator();
+        match self.tab {
+            TodoTab::Today => self.ui_today_view(ui),
+            TodoTab::History => {
+                self.ensure_history();
+                self.ui_history_view(ui);
+            }
+        }
     }
 
     /// 执行一次数据变更并在成功后刷新界面。
@@ -494,6 +595,9 @@ impl MinActionApp {
             }
         }
         self.sync_popup();
+        if self.history.loaded {
+            self.reset_history();
+        }
         ctx.request_repaint();
     }
 
@@ -521,12 +625,14 @@ impl eframe::App for MinActionApp {
         }
         ctx.request_repaint_after(REPAINT_INTERVAL);
 
-        egui::Panel::top("status").show(ui, |ui| self.status_bar(ui));
+        egui::Panel::top("menu").show(ui, |ui| self.ui_menu_bar(ui));
+        egui::Panel::top("toolbar").show(ui, |ui| self.toolbar(ui));
+        egui::Panel::bottom("statusbar").show(ui, |ui| self.ui_status_bar(ui));
         egui::Panel::left("structure")
             .resizable(true)
             .size_range(egui::Rangef::new(240.0, 460.0))
             .show(ui, |ui| self.ui_main_view(ui));
-        egui::CentralPanel::default().show(ui, |ui| self.ui_today_view(ui));
+        egui::CentralPanel::default().show(ui, |ui| self.ui_tabs(ui));
 
         self.show_popup(&ctx);
 
@@ -550,5 +656,8 @@ impl eframe::App for MinActionApp {
         self.ui_reset_dialog(&ctx);
         self.ui_stats_dialog(&ctx);
         self.ui_delete_dialog(&ctx);
+        self.ui_note_dialog(&ctx);
+        self.ui_storage_dialog(&ctx);
+        self.ui_about_dialog(&ctx);
     }
 }

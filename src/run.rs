@@ -1,7 +1,7 @@
 //! 启动编排：单实例锁、数据目录、后台运行时与窗口启动。
 
 use std::fs::File;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 use std::sync::mpsc::channel;
 use std::time::{Duration, Instant};
@@ -11,7 +11,8 @@ use tracing::{info, warn};
 
 use ngy_min_action::app::{MinActionApp, TickEvent, WINDOW_SIZE, WINDOW_TITLE};
 use ngy_min_action::clock::{Clock, SystemClock};
-use ngy_min_action::common::{APP_DATA_DIR, TICK_INTERVAL_SECS, elapsed_ms};
+use ngy_min_action::common::{TICK_INTERVAL_SECS, elapsed_ms};
+use ngy_min_action::config::Bootstrap;
 use ngy_min_action::store::Store;
 
 /// 业务逻辑入口。
@@ -19,8 +20,8 @@ use ngy_min_action::store::Store;
 /// 出错时返回错误而不是自行记录，由 `main` 在边界处统一记录一次。
 pub(crate) fn run() -> Result<()> {
     let started = Instant::now();
-    let directory = data_directory();
-    let Some(_instance) = acquire_instance(&directory)? else {
+    let bootstrap = Bootstrap::system();
+    let Some(_instance) = acquire_instance(&bootstrap.lock_path())? else {
         warn!(
             op = "startup",
             result = "already_running",
@@ -30,11 +31,18 @@ pub(crate) fn run() -> Result<()> {
         return Ok(());
     };
 
+    let directory = bootstrap.data_dir();
     let store = Store::open(&directory.join("data.db")).context("打开数据文件失败")?;
+    info!(
+        op = "startup",
+        data_dir = %directory.display(),
+        lock = %bootstrap.lock_path().display(),
+        "数据位置已解析"
+    );
     let clock: Arc<dyn Clock> = Arc::new(SystemClock);
     let ticks = spawn_ticker();
 
-    let app = MinActionApp::new(store, clock, ticks)?;
+    let app = MinActionApp::new(store, clock, ticks, bootstrap)?;
     info!(
         op = "startup",
         result = "ok",
@@ -53,6 +61,7 @@ pub(crate) fn run() -> Result<()> {
         WINDOW_TITLE,
         options,
         Box::new(move |cc| {
+            egui_extras::install_image_loaders(&cc.egui_ctx);
             app.apply_theme(&cc.egui_ctx);
             Ok(Box::new(app))
         }),
@@ -60,24 +69,17 @@ pub(crate) fn run() -> Result<()> {
     .map_err(|error| anyhow::anyhow!("界面启动失败：{error}"))
 }
 
-/// 应用数据目录：优先用户本地数据目录，读不到时退回临时目录。
-fn data_directory() -> PathBuf {
-    std::env::var_os("LOCALAPPDATA")
-        .map(PathBuf::from)
-        .unwrap_or_else(std::env::temp_dir)
-        .join(APP_DATA_DIR)
-}
-
 /// 取单实例锁。返回 `None` 表示已有实例在运行。
-fn acquire_instance(directory: &Path) -> Result<Option<File>> {
-    std::fs::create_dir_all(directory).context("创建数据目录失败")?;
-    let path = directory.join("app.lock");
+fn acquire_instance(path: &Path) -> Result<Option<File>> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).context("创建启动目录失败")?;
+    }
     let file = std::fs::OpenOptions::new()
         .create(true)
         .read(true)
         .write(true)
         .truncate(false)
-        .open(&path)
+        .open(path)
         .context("打开实例锁文件失败")?;
 
     match file.try_lock() {

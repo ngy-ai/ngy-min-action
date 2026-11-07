@@ -10,7 +10,7 @@ use crate::app::{MinActionApp, theme};
 use crate::model::ThemeChoice;
 
 impl MinActionApp {
-    pub(crate) fn status_bar(&mut self, ui: &mut egui::Ui) {
+    pub(crate) fn toolbar(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             ui.heading(format!("今日 · {}", self.today.format("%Y-%m-%d")));
             ui.separator();
