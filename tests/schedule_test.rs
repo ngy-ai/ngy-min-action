@@ -44,6 +44,7 @@ fn existing(task_id: i64, on_date: NaiveDate) -> Action {
         review_level: None,
         status: ActionStatus::Pending,
         seq: 1,
+        note: None,
     }
 }
 

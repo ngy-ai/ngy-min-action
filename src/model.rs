@@ -4,7 +4,7 @@
 
 use chrono::NaiveDate;
 
-use crate::common::{MAX_EVERY_N_DAYS, MAX_TASK_NAME, MAX_WEEKLY_N};
+use crate::common::{MAX_EVERY_N_DAYS, MAX_TASK_NAME, MAX_WEEKLY_N, NOTE_MAX_CHARS};
 use crate::store::StoreError;
 
 mod stats;
@@ -43,6 +43,10 @@ pub struct TaskId(pub i64);
 /// 行动标识。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ActionId(pub i64);
+
+/// 行动图片标识。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ActionImageId(pub i64);
 
 /// 名称不合法的具体原因。每种原因都对应一条可执行的修正建议。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -407,6 +411,36 @@ pub struct Action {
     pub status: ActionStatus,
     /// 当日排序位次。
     pub seq: u32,
+    /// 用户的文字备注，去掉首尾空白后为空即 `None`。
+    pub note: Option<String>,
+}
+
+/// 行动的一张图片附件。磁盘副本位于数据目录的 `attachments/<行动 ID>/`。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ActionImage {
+    /// 标识。
+    pub id: ActionImageId,
+    /// 所属行动。
+    pub action_id: ActionId,
+    /// 数据目录内的文件名，由程序生成，不含路径分隔符。
+    pub file_name: String,
+    /// 用户原始文件名，仅用于展示。
+    pub original_name: String,
+    /// 文件字节数。
+    pub byte_size: u64,
+    /// 加入时间，RFC 3339。
+    pub created_at: String,
+}
+
+/// 历史待办的一页。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HistoryPage {
+    /// 本页行动，按日期倒序、同日按顺序倒序。
+    pub actions: Vec<Action>,
+    /// 继续向前翻页的游标：日期与当日顺序位次。
+    pub next_cursor: Option<(NaiveDate, i64)>,
+    /// 是否还有更早的行。
+    pub has_more: bool,
 }
 
 /// 复习进度：任务在遗忘曲线上的位置。
@@ -513,6 +547,38 @@ pub fn validate_estimated_minutes(minutes: Option<u16>) -> Result<Option<u16>, D
             expected: format!("1 到 {MAX_ESTIMATED_MINUTES} 分钟，或留空；实际为 {value} 分钟"),
         }),
     }
+}
+
+/// 校验并规范化待办备注。
+///
+/// 返回值是入库形态：去掉首尾空白后为空即 `None`，表示清除备注；否则保留内部换行与
+/// 制表符。允许换行（备注可以分点），拒绝其它控制字符（避免日志与界面被注入）。
+///
+/// # Errors
+///
+/// 超过 [`NOTE_MAX_CHARS`] 个字符或含不允许的控制字符时返回
+/// [`DomainError::InvalidValue`]。
+pub fn validate_note(raw: &str) -> Result<Option<String>, DomainError> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    if trimmed.chars().count() > NOTE_MAX_CHARS {
+        return Err(DomainError::InvalidValue {
+            field: "备注",
+            expected: format!("不超过 {NOTE_MAX_CHARS} 个字符"),
+        });
+    }
+    if trimmed
+        .chars()
+        .any(|character| character.is_control() && character != '\n' && character != '\t')
+    {
+        return Err(DomainError::InvalidValue {
+            field: "备注",
+            expected: "不含换行与制表符之外的不可见控制字符".to_owned(),
+        });
+    }
+    Ok(Some(trimmed.to_owned()))
 }
 
 #[cfg(test)]

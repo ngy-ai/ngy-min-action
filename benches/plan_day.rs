@@ -66,6 +66,7 @@ fn existing_actions() -> Vec<Action> {
             review_level: None,
             status: ActionStatus::Pending,
             seq: u32::try_from(id - 1).expect("序号非负"),
+            note: None,
         })
         .collect()
 }

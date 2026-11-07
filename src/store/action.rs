@@ -5,8 +5,8 @@ use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::common::{DEFERRED_RETENTION_DAYS, REVIEW_INTERVALS_DAYS};
 use crate::model::{
-    Action, ActionId, ActionKind, ActionStatus, DomainError, ReviewProgress, Task, TaskId,
-    TaskStatus,
+    Action, ActionId, ActionKind, ActionStatus, DomainError, HistoryPage, ReviewProgress, Task,
+    TaskId, TaskStatus,
 };
 use crate::schedule::{PlanInput, advance_review, plan_day};
 use crate::store::{OpTrace, Store, decode_date, encode_date, now_rfc3339};
@@ -23,6 +23,67 @@ impl Store {
         let actions = load_actions(&connection, today)?;
         trace.ok();
         Ok(actions)
+    }
+
+    /// 历史待办的一页，按日期倒序、同日按顺序倒序。
+    ///
+    /// `cursor` 取上一页返回的 [`HistoryPage::next_cursor`]，首屏传 `None`。
+    /// `limit` 为 0 时按 1 处理，保证每次至少前进一行。
+    ///
+    /// # Errors
+    ///
+    /// 查询失败时返回 [`DomainError::Store`]。
+    pub fn actions_page(
+        &self,
+        today: NaiveDate,
+        cursor: Option<(NaiveDate, i64)>,
+        limit: u16,
+    ) -> Result<HistoryPage, DomainError> {
+        let mut trace = OpTrace::begin("actions_page");
+        let connection = self.guard();
+        let limit = limit.max(1);
+        let (cursor_date, cursor_seq) = match cursor {
+            Some((date, seq)) => (Some(encode_date(date)), seq),
+            None => (None, i64::MAX),
+        };
+        let mut statement = connection.prepare(
+            "SELECT id, task_id, on_date, kind, review_level, status, seq, note
+               FROM actions
+              WHERE on_date < ?1
+                AND (?2 IS NULL OR on_date < ?2 OR (on_date = ?2 AND seq < ?3))
+              ORDER BY on_date DESC, seq DESC, id DESC
+              LIMIT ?4",
+        )?;
+        let rows = statement.query_map(
+            params![
+                encode_date(today),
+                cursor_date,
+                cursor_seq,
+                i64::from(limit) + 1
+            ],
+            map_action,
+        )?;
+        let mut actions = Vec::new();
+        for row in rows {
+            actions.push(row?);
+        }
+        let has_more = actions.len() > usize::from(limit);
+        if has_more {
+            actions.truncate(usize::from(limit));
+        }
+        let next_cursor = if has_more {
+            actions
+                .last()
+                .map(|action| (action.on_date, i64::from(action.seq)))
+        } else {
+            None
+        };
+        trace.ok();
+        Ok(HistoryPage {
+            actions,
+            next_cursor,
+            has_more,
+        })
     }
 
     /// 生成某一天的清单，幂等。
@@ -329,7 +390,7 @@ impl Store {
 
 fn load_actions(connection: &Connection, today: NaiveDate) -> Result<Vec<Action>, DomainError> {
     let mut statement = connection.prepare(
-        "SELECT id, task_id, on_date, kind, review_level, status, seq
+        "SELECT id, task_id, on_date, kind, review_level, status, seq, note
            FROM actions WHERE on_date = ?1 ORDER BY seq, id",
     )?;
     let rows = statement.query_map(params![encode_date(today)], map_action)?;
@@ -343,7 +404,7 @@ fn load_actions(connection: &Connection, today: NaiveDate) -> Result<Vec<Action>
 fn load_action(connection: &Connection, action: ActionId) -> Result<Action, DomainError> {
     connection
         .query_row(
-            "SELECT id, task_id, on_date, kind, review_level, status, seq
+            "SELECT id, task_id, on_date, kind, review_level, status, seq, note
                FROM actions WHERE id = ?1",
             params![action.0],
             map_action,
@@ -424,6 +485,7 @@ fn map_action(row: &rusqlite::Row<'_>) -> rusqlite::Result<Action> {
         review_level: row.get(4)?,
         status: ActionStatus::parse(&status),
         seq: row.get(6)?,
+        note: row.get(7)?,
     })
 }
 
