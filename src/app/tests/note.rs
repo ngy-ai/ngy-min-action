@@ -2,6 +2,9 @@
 
 use super::*;
 
+use eframe::egui;
+
+use crate::app::note_dialog::image_uri;
 use crate::model::ActionId;
 
 fn seed_action(app: &mut MinActionApp) -> ActionId {
@@ -81,6 +84,36 @@ fn images_are_copied_and_removed_with_the_record() {
     assert!(app.note.as_ref().expect("备注窗口").images.is_empty());
     assert!(!stored.exists(), "移除后磁盘副本应删除");
     assert!(app.store.action_images(action).expect("读图片").is_empty());
+}
+
+#[test]
+fn note_image_uri_is_loadable_by_the_file_loader() {
+    let ctx = egui::Context::default();
+    egui_extras::install_image_loaders(&ctx);
+    let source = temp_png("uri");
+    let uri = image_uri(&source);
+
+    let mut waited = 0;
+    let bytes = loop {
+        match ctx.try_load_bytes(&uri) {
+            Ok(egui::load::BytesPoll::Ready { bytes, .. }) => break bytes,
+            Ok(egui::load::BytesPoll::Pending { .. }) => {
+                std::thread::sleep(std::time::Duration::from_millis(10));
+                waited += 1;
+                assert!(waited < 200, "文件加载超时：{uri}");
+            }
+            Err(error) => panic!("加载器读不到 {uri}：{error}"),
+        }
+    };
+    assert!(!bytes.is_empty(), "读到的图片字节不应为空");
+}
+
+#[test]
+fn image_uri_keeps_unc_paths() {
+    assert_eq!(
+        image_uri(std::path::Path::new(r"\\server\share\预览.png")),
+        "file://server/share/预览.png"
+    );
 }
 
 #[test]

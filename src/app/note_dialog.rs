@@ -3,7 +3,7 @@
 //! 图片在加入时立即复制并写库，文字在点「保存」时写库；关闭窗口未保存的文字丢弃，
 //! 已加入的图片保留（它们已经是独立记录，可以逐张移除）。
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use eframe::egui;
@@ -14,6 +14,19 @@ use crate::app::icons::{self, ButtonId};
 use crate::attachment::AttachmentStore;
 use crate::common::{NOTE_MAX_CHARS, elapsed_ms};
 use crate::model::{ActionId, ActionImageId};
+
+/// 把磁盘路径构造成图片加载器能识别的 `file://` URI。
+///
+/// 盘符路径必须写成 `file:///C:/dir/a.png`：写成 `file://C:\dir\a.png` 时，
+/// 加载器会把 `C:\dir` 当作 UNC 主机名去找网络路径。UNC 路径则保留主机段，
+/// 写成 `file://server/share/a.png`。
+pub(crate) fn image_uri(path: &Path) -> String {
+    let text = path.display().to_string().replace('\\', "/");
+    match text.strip_prefix("//") {
+        Some(unc) => format!("file://{unc}"),
+        None => format!("file:///{}", text.trim_start_matches('/')),
+    }
+}
 
 impl MinActionApp {
     /// 打开某条待办的备注；`read_only` 为真时只展示，不提供编辑入口。
@@ -136,7 +149,7 @@ impl MinActionApp {
                                 if let Some(path) = &path
                                     && exists
                                 {
-                                    let uri = format!("file://{}", path.display());
+                                    let uri = image_uri(path);
                                     ui.add(egui::Image::new(uri).max_size(egui::vec2(96.0, 80.0)));
                                 } else {
                                     ui.label("图片缺失");
