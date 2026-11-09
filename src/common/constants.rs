@@ -56,5 +56,8 @@ pub const IMAGE_MAX_DIMENSION: u32 = 12_000;
 /// 音频/视频附件的最大字节数。比图片更宽松，因为媒体文件天然更大。
 pub const MEDIA_MAX_BYTES: u64 = 200 * 1024 * 1024;
 
+/// 任务内容的最大字符数，比备注更宽松，用于写说明、步骤或带链接的指引。
+pub const MAX_TASK_DESCRIPTION: usize = 4000;
+
 /// 历史待办每页的行数。
 pub const HISTORY_PAGE_SIZE: u16 = 50;

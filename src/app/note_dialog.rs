@@ -11,7 +11,7 @@ use tracing::{info, warn};
 
 use crate::app::MinActionApp;
 use crate::app::icons::{self, ButtonId};
-use crate::attachment::AttachmentStore;
+use crate::attachment::{AttachmentStore, MediaStore};
 use crate::common::{NOTE_MAX_CHARS, elapsed_ms};
 use crate::model::{ActionId, ActionImageId};
 
@@ -32,15 +32,16 @@ impl MinActionApp {
     /// 打开某条待办的备注；`read_only` 为真时只展示，不提供编辑入口。
     pub(crate) fn open_note(&mut self, action: ActionId, read_only: bool) {
         let started = Instant::now();
-        let title = self
+        let action_item = self
             .actions
             .iter()
             .chain(self.history.actions.iter())
-            .find(|item| item.id == action)
-            .map_or_else(
-                || format!("行动#{}", action.0),
-                |item| self.describe_action(item),
-            );
+            .find(|item| item.id == action);
+        let title = action_item.map_or_else(
+            || format!("行动#{}", action.0),
+            |item| self.describe_action(item),
+        );
+        let task_id = action_item.map(|item| item.task_id);
         let text = match self.store.action_note(action) {
             Ok(note) => note.unwrap_or_default(),
             Err(error) => {
@@ -69,6 +70,41 @@ impl MinActionApp {
                 return;
             }
         };
+
+        let source = match task_id {
+            Some(task_id) => match self.store.task(task_id) {
+                Ok(task) => match self.store.task_media(task.id) {
+                    Ok(media) => Some(crate::app::SourceTask {
+                        task_id: task.id,
+                        name: task.name,
+                        description: task.description,
+                        media,
+                    }),
+                    Err(error) => {
+                        warn!(
+                            op = "open_note",
+                            result = "error",
+                            action = action.0,
+                            error = %error,
+                            "来源任务媒体读取失败，左侧将只显示标题"
+                        );
+                        None
+                    }
+                },
+                Err(error) => {
+                    warn!(
+                        op = "open_note",
+                        result = "error",
+                        action = action.0,
+                        error = %error,
+                        "来源任务读取失败，左侧将留空"
+                    );
+                    None
+                }
+            },
+            None => None,
+        };
+
         self.note = Some(crate::app::NoteEditor {
             action,
             title,
@@ -76,6 +112,7 @@ impl MinActionApp {
             images,
             read_only,
             error: None,
+            source,
         });
         info!(
             op = "open_note",
@@ -103,83 +140,112 @@ impl MinActionApp {
         egui::Window::new("待办备注")
             .open(&mut open)
             .resizable(true)
-            .default_width(460.0)
+            .default_width(640.0)
             .show(ctx, |ui| {
-                ui.label(&editor.title);
-                ui.separator();
-
-                if read_only {
-                    if editor.text.trim().is_empty() {
-                        ui.weak("没有文字备注");
-                    } else {
-                        ui.label(&editor.text);
+                ui.columns(2, |columns| {
+                    // 左栏：来源任务（只读）。
+                    let source_ui = &mut columns[0];
+                    source_ui.heading("来源任务");
+                    source_ui.separator();
+                    match &editor.source {
+                        Some(source) => {
+                            source_ui.strong(&source.name);
+                            source_ui.separator();
+                            let media_store = MediaStore::new(&self.data_dir);
+                            crate::app::rich_content::render_rich_content(
+                                source_ui,
+                                source.description.as_deref(),
+                                &source.media,
+                                &media_store,
+                                source.task_id,
+                            );
+                        }
+                        None => {
+                            source_ui.weak("无法读取来源任务");
+                        }
                     }
-                } else {
-                    ui.add(
-                        egui::TextEdit::multiline(&mut editor.text)
-                            .desired_rows(5)
-                            .desired_width(f32::INFINITY)
-                            .char_limit(NOTE_MAX_CHARS),
-                    );
-                    ui.weak(format!(
-                        "{}/{} 个字符",
-                        editor.text.chars().count(),
-                        NOTE_MAX_CHARS
-                    ));
-                }
 
-                if let Some(error) = &editor.error {
-                    let danger = ui.visuals().error_fg_color;
-                    ui.colored_label(danger, error);
-                }
+                    // 右栏：当前备注。
+                    let ui = &mut columns[1];
+                    ui.strong(&editor.title);
+                    ui.separator();
 
-                ui.separator();
-                ui.label(format!("图片（{}）", editor.images.len()));
-                if editor.images.is_empty() {
-                    ui.weak("还没有图片附件。可点「添加图片」或把图片拖进窗口。");
-                }
-                ui.horizontal_wrapped(|ui| {
-                    for image in &editor.images {
-                        let path = attachments.path(action, &image.file_name).ok();
-                        let exists = path.as_ref().is_some_and(|path| path.exists());
-                        ui.allocate_ui_with_layout(
-                            egui::vec2(128.0, 120.0),
-                            egui::Layout::top_down(egui::Align::Center),
-                            |ui| {
-                                if let Some(path) = &path
-                                    && exists
-                                {
-                                    let uri = image_uri(path);
-                                    ui.add(egui::Image::new(uri).max_size(egui::vec2(96.0, 80.0)));
-                                } else {
-                                    ui.label("图片缺失");
-                                }
-                                ui.weak(&image.original_name);
-                                if !read_only && icons::add(ui, ButtonId::RemoveImage).clicked() {
-                                    remove = Some(image.id);
-                                }
-                            },
-                        );
-                    }
-                });
-
-                ui.separator();
-                ui.horizontal(|ui| {
                     if read_only {
-                        if icons::add(ui, ButtonId::Close).clicked() {
-                            close = true;
+                        if editor.text.trim().is_empty() {
+                            ui.weak("没有文字备注");
+                        } else {
+                            ui.label(&editor.text);
                         }
                     } else {
-                        if ui.button("添加图片…").clicked() {
-                            choose_images = true;
-                        }
-                        if icons::add(ui, ButtonId::Save).clicked() {
-                            save = true;
-                        }
-                        if icons::add(ui, ButtonId::Cancel).clicked() {
-                            close = true;
-                        }
+                        ui.add(
+                            egui::TextEdit::multiline(&mut editor.text)
+                                .desired_rows(5)
+                                .desired_width(f32::INFINITY)
+                                .char_limit(NOTE_MAX_CHARS),
+                        );
+                        ui.weak(format!(
+                            "{}/{} 个字符",
+                            editor.text.chars().count(),
+                            NOTE_MAX_CHARS
+                        ));
                     }
+
+                    if let Some(error) = &editor.error {
+                        let danger = ui.visuals().error_fg_color;
+                        ui.colored_label(danger, error);
+                    }
+
+                    ui.separator();
+                    ui.label(format!("图片（{}）", editor.images.len()));
+                    if editor.images.is_empty() {
+                        ui.weak("还没有图片附件。可点「添加图片」或把图片拖进窗口。");
+                    }
+                    ui.horizontal_wrapped(|ui| {
+                        for image in &editor.images {
+                            let path = attachments.path(action, &image.file_name).ok();
+                            let exists = path.as_ref().is_some_and(|path| path.exists());
+                            ui.allocate_ui_with_layout(
+                                egui::vec2(128.0, 120.0),
+                                egui::Layout::top_down(egui::Align::Center),
+                                |ui| {
+                                    if let Some(path) = &path
+                                        && exists
+                                    {
+                                        let uri = image_uri(path);
+                                        ui.add(
+                                            egui::Image::new(uri).max_size(egui::vec2(96.0, 80.0)),
+                                        );
+                                    } else {
+                                        ui.label("图片缺失");
+                                    }
+                                    ui.weak(&image.original_name);
+                                    if !read_only && icons::add(ui, ButtonId::RemoveImage).clicked()
+                                    {
+                                        remove = Some(image.id);
+                                    }
+                                },
+                            );
+                        }
+                    });
+
+                    ui.separator();
+                    ui.horizontal(|ui| {
+                        if read_only {
+                            if icons::add(ui, ButtonId::Close).clicked() {
+                                close = true;
+                            }
+                        } else {
+                            if ui.button("添加图片…").clicked() {
+                                choose_images = true;
+                            }
+                            if icons::add(ui, ButtonId::Save).clicked() {
+                                save = true;
+                            }
+                            if icons::add(ui, ButtonId::Cancel).clicked() {
+                                close = true;
+                            }
+                        }
+                    });
                 });
             });
 

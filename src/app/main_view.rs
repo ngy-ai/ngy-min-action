@@ -273,6 +273,7 @@ impl MinActionApp {
         let mut frequency: Option<(crate::model::TaskId, Frequency)> = None;
         let mut estimate: Option<(crate::model::TaskId, Option<u16>)> = None;
         let mut drop_task: Option<crate::model::TaskId> = None;
+        let mut detail: Option<crate::model::TaskId> = None;
 
         egui::ScrollArea::vertical()
             .id_salt("task-list")
@@ -336,6 +337,9 @@ impl MinActionApp {
                             rename = Some((RenameTarget::Task(task.id), task.name.clone()));
                         }
                         ui.add_space(8.0);
+                        if icons::add(ui, ButtonId::TaskDetail).clicked() {
+                            detail = Some(task.id);
+                        }
                         if icons::add(ui, ButtonId::DeleteTask).clicked() {
                             drop_task = Some(task.id);
                         }
@@ -354,6 +358,9 @@ impl MinActionApp {
         }
         if let Some(task) = drop_task {
             self.request_delete(PendingDelete::Task(task));
+        }
+        if let Some(task) = detail {
+            self.open_task_detail(task);
         }
         if let Some((task, status)) = toggle {
             let hint = match status {

@@ -26,7 +26,7 @@ pub const MAX_TASK_NAME_CHARS: usize = MAX_TASK_NAME;
 pub const MAX_DESCRIPTION: usize = 500;
 
 /// 任务内容的最大字符数。比备注更宽松，用于写说明、步骤或带链接的指引。
-pub const MAX_TASK_DESCRIPTION: usize = 4000;
+pub use crate::common::MAX_TASK_DESCRIPTION;
 
 /// 单次预计耗时的上限（分钟）。
 pub const MAX_ESTIMATED_MINUTES: u16 = 480;
