@@ -39,8 +39,8 @@
 - [x] T014 门禁：`cargo fmt --check`、`cargo clippy --all-targets --all-features -- -D warnings`、
       `cargo test --all-targets --all-features`、`cargo machete`、`cargo audit`；复核
       `git diff main -- Cargo.toml` 与颜色字面量（全绿）
-- [ ] T015 勾选本清单、填写验收记录，按逻辑拆分提交并写 PR 描述（含宪法条款复核与单开发者
-      仓库自我证明）
+- [x] T015 勾选本清单、填写验收记录，按逻辑拆分提交并写 PR 描述（含宪法条款复核与单开发者
+      仓库自我证明）；PR #20（base = `012-todo-workspace`，堆叠，待 #19 合入后改 base 为 `main`）
 
 ## Notes
 
@@ -57,7 +57,8 @@
 | 项 | 结果 |
 | --- | --- |
 | 分支 | `013-task-content`，基于 `012-todo-workspace` 顶端（main 尚未合入 012，故 `git diff main` 同时含 012 的改动） |
-| 提交 | `eef2fec` 规格/计划/任务、`20744ea` 数据层、`a8e2c5f` UI 实现、`db717ca` 测试 |
+| 提交 | `eef2fec` 规格/计划/任务、`20744ea` 数据层、`a8e2c5f` UI 实现、`db717ca` 测试、`40c7c11` 验收记录 |
+| PR | #20（base = `012-todo-workspace`，堆叠；#19 合入 `main` 后改 base 为 `main`） |
 | 新增（源码） | `src/app/rich_content.rs`、`src/app/task_dialog.rs` |
 | 新增（测试） | `src/app/tests/task_content.rs`（集成 `tests/task_content_test.rs` 随数据层提交） |
 | 修改 | `src/app.rs`、`src/app/{icons,main_view,note_dialog,tests}.rs`、`src/{model,common}.rs`、`src/common/constants.rs` |
