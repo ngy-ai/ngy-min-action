@@ -419,7 +419,7 @@ fn load_action(connection: &Connection, action: ActionId) -> Result<Action, Doma
 fn load_active_tasks(connection: &Connection) -> Result<Vec<Task>, DomainError> {
     let mut statement = connection.prepare(
         "SELECT id, category_id, name, freq_kind, freq_interval, estimated_minutes,
-                status, last_generated_on, created_at
+                status, last_generated_on, created_at, description
            FROM tasks WHERE deleted_at IS NULL AND status = 'active' ORDER BY id",
     )?;
     let rows = statement.query_map([], |row| {
@@ -427,6 +427,7 @@ fn load_active_tasks(connection: &Connection) -> Result<Vec<Task>, DomainError> 
         let interval: i64 = row.get(4)?;
         let status: String = row.get(6)?;
         let last_generated: Option<String> = row.get(7)?;
+        let description: Option<String> = row.get(9)?;
         Ok(Task {
             id: TaskId(row.get(0)?),
             category_id: crate::model::CategoryId(row.get(1)?),
@@ -434,6 +435,7 @@ fn load_active_tasks(connection: &Connection) -> Result<Vec<Task>, DomainError> 
             frequency: crate::model::Frequency::from_parts(&kind, interval)
                 .unwrap_or(crate::model::Frequency::Daily),
             estimated_minutes: row.get(5)?,
+            description,
             status: TaskStatus::parse(&status),
             last_generated_on: last_generated.as_deref().and_then(decode_date),
             created_at: row.get(8)?,

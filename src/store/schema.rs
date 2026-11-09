@@ -14,7 +14,8 @@ use crate::common::elapsed_ms;
 ///
 /// 1 → 2 的变更：目标与分类增加 `name_folded` 列，唯一性改由整表唯一索引承担。
 /// 2 → 3 的变更：行动增加 `note` 列，新增 `action_images` 表；保留全部业务数据。
-pub(crate) const SCHEMA_VERSION: i64 = 3;
+/// 3 → 4 的变更：任务增加 `description` 列，新增 `task_content_media` 表；保留全部业务数据。
+pub(crate) const SCHEMA_VERSION: i64 = 4;
 
 /// 建表语句。
 ///
@@ -53,6 +54,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     freq_kind         TEXT    NOT NULL,
     freq_interval     INTEGER NOT NULL,
     estimated_minutes INTEGER,
+    description       TEXT,
     status            TEXT    NOT NULL DEFAULT 'active',
     last_generated_on TEXT,
     created_at        TEXT    NOT NULL,
@@ -85,6 +87,20 @@ CREATE TABLE IF NOT EXISTS action_images (
 
 CREATE INDEX IF NOT EXISTS idx_action_images_action
     ON action_images(action_id);
+
+CREATE TABLE IF NOT EXISTS task_content_media (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id       INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    kind          TEXT    NOT NULL,
+    file_name     TEXT    NOT NULL,
+    original_name TEXT    NOT NULL,
+    byte_size     INTEGER NOT NULL,
+    created_at    TEXT    NOT NULL,
+    UNIQUE(task_id, file_name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_task_content_media_task
+    ON task_content_media(task_id);
 
 CREATE TABLE IF NOT EXISTS review_progress (
     task_id        INTEGER PRIMARY KEY REFERENCES tasks(id) ON DELETE CASCADE,
@@ -122,6 +138,7 @@ CREATE TABLE IF NOT EXISTS settings (
 ///
 /// `foreign_keys=ON` 时父表不能先于子表删除，顺序颠倒会触发外键错误。
 const DROP_TABLES: &str = r"
+DROP TABLE IF EXISTS task_content_media;
 DROP TABLE IF EXISTS action_images;
 DROP TABLE IF EXISTS action_settlements;
 DROP TABLE IF EXISTS actions;
@@ -212,13 +229,40 @@ CREATE INDEX IF NOT EXISTS idx_action_images_action
     ON action_images(action_id);
 ";
 
+/// 3 → 4 的增量升级语句。
+///
+/// 只做加列与建表，不触碰任何既有行；结构与 [`DDL`] 中对应片段保持一致。
+const V4_UPGRADE: &str = r"
+ALTER TABLE tasks ADD COLUMN description TEXT;
+
+CREATE TABLE IF NOT EXISTS task_content_media (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id       INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    kind          TEXT    NOT NULL,
+    file_name     TEXT    NOT NULL,
+    original_name TEXT    NOT NULL,
+    byte_size     INTEGER NOT NULL,
+    created_at    TEXT    NOT NULL,
+    UNIQUE(task_id, file_name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_task_content_media_task
+    ON task_content_media(task_id);
+";
+
 /// 把旧库升级到当前结构。
 ///
-/// 2 → 3 保留全部业务数据；更早的版本缺少名称折叠列，无法原地补齐，仍按原有策略
+/// 2 → 3、3 → 4 均保留全部业务数据；更早的版本缺少名称折叠列，无法原地补齐，仍按原有策略
 /// 清空重建。迁移必须整体成功：任一步失败都不改变库里的任何一个字节。
 fn migrate(connection: &Connection, from: i64) -> Result<(), SchemaError> {
+    // 旧库可能是任意历史版本，必须逐级补齐到当前版本；2 → 3 → 4 都只做
+    // 增量变更并保留全部业务数据。更早的版本缺少名称折叠列，无法原地补齐，清空重建。
     if from == 2 {
-        return upgrade_v2_to_v3(connection);
+        upgrade_v2_to_v3(connection)?;
+        return upgrade_v3_to_v4(connection);
+    }
+    if from == 3 {
+        return upgrade_v3_to_v4(connection);
     }
     rebuild(connection, from)
 }
@@ -232,6 +276,23 @@ fn upgrade_v2_to_v3(connection: &Connection) -> Result<(), SchemaError> {
     info!(
         op = "store_migrate",
         from = 2,
+        to = SCHEMA_VERSION,
+        result = "ok",
+        elapsed_ms = elapsed_ms(started),
+        "旧库已增量升级，业务数据保留"
+    );
+    Ok(())
+}
+
+fn upgrade_v3_to_v4(connection: &Connection) -> Result<(), SchemaError> {
+    let started = Instant::now();
+    let transaction = connection.unchecked_transaction()?;
+    transaction.execute_batch(V4_UPGRADE)?;
+    transaction.pragma_update(None, "user_version", SCHEMA_VERSION)?;
+    transaction.commit()?;
+    info!(
+        op = "store_migrate",
+        from = 3,
         to = SCHEMA_VERSION,
         result = "ok",
         elapsed_ms = elapsed_ms(started),

@@ -20,6 +20,7 @@ fn draft(name: &str) -> TaskDraft {
         name: name.to_owned(),
         frequency: Frequency::Daily,
         estimated_minutes: None,
+        description: None,
     }
 }
 

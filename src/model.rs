@@ -25,6 +25,9 @@ pub const MAX_TASK_NAME_CHARS: usize = MAX_TASK_NAME;
 /// 目标描述的最大字符数。
 pub const MAX_DESCRIPTION: usize = 500;
 
+/// 任务内容的最大字符数。比备注更宽松，用于写说明、步骤或带链接的指引。
+pub const MAX_TASK_DESCRIPTION: usize = 4000;
+
 /// 单次预计耗时的上限（分钟）。
 pub const MAX_ESTIMATED_MINUTES: u16 = 480;
 
@@ -47,6 +50,10 @@ pub struct ActionId(pub i64);
 /// 行动图片标识。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ActionImageId(pub i64);
+
+/// 任务内容媒体标识。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct TaskMediaId(pub i64);
 
 /// 名称不合法的具体原因。每种原因都对应一条可执行的修正建议。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -296,6 +303,8 @@ pub struct Task {
     pub frequency: Frequency,
     /// 可选的单次预计耗时（分钟）。
     pub estimated_minutes: Option<u16>,
+    /// 可选的内容：富纯文本与媒体附件的说明，去掉首尾空白后为空即 `None`。
+    pub description: Option<String>,
     /// 状态。
     pub status: TaskStatus,
     /// 最近一次生成常规行动的日期。
@@ -313,6 +322,8 @@ pub struct TaskDraft {
     pub frequency: Frequency,
     /// 可选的单次预计耗时（分钟）。
     pub estimated_minutes: Option<u16>,
+    /// 可选的内容：富纯文本与媒体附件的说明，去掉首尾空白后为空即 `None`。
+    pub description: Option<String>,
 }
 
 /// 行动类型。
@@ -422,6 +433,58 @@ pub struct ActionImage {
     pub id: ActionImageId,
     /// 所属行动。
     pub action_id: ActionId,
+    /// 数据目录内的文件名，由程序生成，不含路径分隔符。
+    pub file_name: String,
+    /// 用户原始文件名，仅用于展示。
+    pub original_name: String,
+    /// 文件字节数。
+    pub byte_size: u64,
+    /// 加入时间，RFC 3339。
+    pub created_at: String,
+}
+
+/// 任务内容的媒体类型。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TaskMediaKind {
+    /// 图片，展示时内联渲染。
+    Image,
+    /// 音频，点击后由系统默认程序打开。
+    Audio,
+    /// 视频，点击后由系统默认程序打开。
+    Video,
+}
+
+impl TaskMediaKind {
+    /// 入库用的标签。
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            TaskMediaKind::Image => "image",
+            TaskMediaKind::Audio => "audio",
+            TaskMediaKind::Video => "video",
+        }
+    }
+
+    /// 从入库值还原。未知标签归为图片，避免既有数据被丢弃。
+    #[must_use]
+    pub fn parse(raw: &str) -> Self {
+        match raw {
+            "audio" => TaskMediaKind::Audio,
+            "video" => TaskMediaKind::Video,
+            _ => TaskMediaKind::Image,
+        }
+    }
+}
+
+/// 任务内容的一段媒体附件。磁盘副本位于数据目录的 `task_content/<任务 ID>/`。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TaskMedia {
+    /// 标识。
+    pub id: TaskMediaId,
+    /// 所属任务。
+    pub task_id: TaskId,
+    /// 媒体类型。
+    pub kind: TaskMediaKind,
     /// 数据目录内的文件名，由程序生成，不含路径分隔符。
     pub file_name: String,
     /// 用户原始文件名，仅用于展示。
@@ -575,6 +638,38 @@ pub fn validate_note(raw: &str) -> Result<Option<String>, DomainError> {
     {
         return Err(DomainError::InvalidValue {
             field: "备注",
+            expected: "不含换行与制表符之外的不可见控制字符".to_owned(),
+        });
+    }
+    Ok(Some(trimmed.to_owned()))
+}
+
+/// 校验并规范化任务内容。
+///
+/// 与 [`validate_note`] 同源：去掉首尾空白后为空即 `None`，表示清除内容；允许内部换行
+/// 与制表符，拒绝其它控制字符（避免日志与界面被注入）。上限为 [`MAX_TASK_DESCRIPTION`]。
+///
+/// # Errors
+///
+/// 超过 [`MAX_TASK_DESCRIPTION`] 个字符或含不允许的控制字符时返回
+/// [`DomainError::InvalidValue`]。
+pub fn validate_description(raw: &str) -> Result<Option<String>, DomainError> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    if trimmed.chars().count() > MAX_TASK_DESCRIPTION {
+        return Err(DomainError::InvalidValue {
+            field: "任务内容",
+            expected: format!("不超过 {MAX_TASK_DESCRIPTION} 个字符"),
+        });
+    }
+    if trimmed
+        .chars()
+        .any(|character| character.is_control() && character != '\n' && character != '\t')
+    {
+        return Err(DomainError::InvalidValue {
+            field: "任务内容",
             expected: "不含换行与制表符之外的不可见控制字符".to_owned(),
         });
     }

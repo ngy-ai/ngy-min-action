@@ -197,6 +197,7 @@ impl MinActionApp {
                     name: self.new_task.clone(),
                     frequency,
                     estimated_minutes,
+                    description: None,
                 };
                 if self
                     .apply(|app| {

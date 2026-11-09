@@ -53,5 +53,8 @@ pub const IMAGE_MAX_BYTES: u64 = 10 * 1024 * 1024;
 /// 图片单边的最大像素数，用于拒绝解压后体积失控的文件。
 pub const IMAGE_MAX_DIMENSION: u32 = 12_000;
 
+/// 音频/视频附件的最大字节数。比图片更宽松，因为媒体文件天然更大。
+pub const MEDIA_MAX_BYTES: u64 = 200 * 1024 * 1024;
+
 /// 历史待办每页的行数。
 pub const HISTORY_PAGE_SIZE: u16 = 50;
