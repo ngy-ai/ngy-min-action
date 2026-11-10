@@ -12,6 +12,7 @@ use chrono::NaiveDate;
 
 use super::{MinActionApp, TickEvent};
 use crate::clock::FixedClock;
+use crate::config::Bootstrap;
 use crate::model::{CategoryId, Frequency, TaskDraft, TaskId};
 use crate::store::Store;
 
@@ -19,12 +20,16 @@ mod context_menu;
 mod delete;
 mod estimate;
 mod frequency;
+mod history;
 mod icons;
+mod note;
 mod rename;
 mod render;
 mod reset;
 mod stats;
+mod storage;
 mod theme;
+mod workspace;
 
 fn today() -> NaiveDate {
     NaiveDate::from_ymd_opt(2026, 11, 4).expect("测试日期必须合法")
@@ -44,7 +49,8 @@ fn open_app_with_clock(tag: &str) -> (MinActionApp, Arc<FixedClock>) {
     let store = Store::open(&dir.join("data.db")).expect("应能创建临时数据库");
     let clock = Arc::new(FixedClock::new(today()));
     let (_sender, receiver) = mpsc::channel::<TickEvent>();
-    let app = MinActionApp::new(store, clock.clone(), receiver).expect("应能构建应用");
+    let bootstrap = Bootstrap::new(&dir);
+    let app = MinActionApp::new(store, clock.clone(), receiver, bootstrap).expect("应能构建应用");
     (app, clock)
 }
 

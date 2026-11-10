@@ -1,105 +1,43 @@
-//! 顶栏：当日状态、每日上限、主题入口与错误提示。
-
-use std::time::Instant;
+//! 底部状态栏：数据位置、今日待办数与版本。
+//!
+//! 长路径按字符中间省略，完整路径放在悬停提示里，避免挤压右侧计数。
 
 use eframe::egui;
-use tracing::{info, warn};
 
-use crate::app::icons::{self, ButtonId};
-use crate::app::{MinActionApp, theme};
-use crate::model::ThemeChoice;
+use crate::app::MinActionApp;
+use crate::model::ActionStatus;
 
 impl MinActionApp {
-    pub(crate) fn status_bar(&mut self, ui: &mut egui::Ui) {
+    pub(crate) fn ui_status_bar(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
-            ui.heading(format!("今日 · {}", self.today.format("%Y-%m-%d")));
-            ui.separator();
-            let pending = self
-                .actions
-                .iter()
-                .filter(|action| action.status == crate::model::ActionStatus::Pending)
-                .count();
-            ui.label(format!("共 {} 条待完成", pending));
-            if self.deferred > 0 {
+            let path = self.data_dir.display().to_string();
+            ui.add(egui::Label::new(elide_middle(&path, 64)).truncate())
+                .on_hover_text(path);
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.label(format!("v{}", env!("CARGO_PKG_VERSION")));
                 ui.separator();
-                let warning = ui.visuals().warn_fg_color;
-                ui.colored_label(warning, format!("已顺延 {} 条", self.deferred));
-            }
-            ui.separator();
-            ui.label("每日上限");
-            let mut cap = self.daily_cap;
-            if ui
-                .add(egui::DragValue::new(&mut cap).range(1..=20))
-                .changed()
-            {
-                let started = Instant::now();
-                match self.store.set_daily_cap(cap) {
-                    Ok(()) => {
-                        self.daily_cap = cap;
-                        info!(
-                            op = "set_daily_cap",
-                            result = "ok",
-                            cap,
-                            elapsed_ms = crate::common::elapsed_ms(started),
-                            "每日上限已更新"
-                        );
-                        if let Err(error) = self.reload() {
-                            self.error = Some(format!("刷新失败：{error}"));
-                            warn!(
-                                op = "set_daily_cap",
-                                result = "refresh_error",
-                                cap,
-                                elapsed_ms = crate::common::elapsed_ms(started),
-                                error = %error,
-                                "每日上限已更新，但随后的刷新失败"
-                            );
-                        }
-                    }
-                    Err(error) => {
-                        self.error = Some(error.to_string());
-                        warn!(
-                            op = "set_daily_cap",
-                            result = "error",
-                            cap,
-                            elapsed_ms = crate::common::elapsed_ms(started),
-                            error = %error,
-                            "每日上限更新失败"
-                        );
-                    }
-                }
-            }
-            ui.separator();
-            let mut chosen = None;
-            egui::ComboBox::from_id_salt("theme-choice")
-                .selected_text(theme::label(self.theme))
-                .width(96.0)
-                .show_ui(ui, |ui| {
-                    for value in [ThemeChoice::System, ThemeChoice::Light, ThemeChoice::Dark] {
-                        if ui
-                            .selectable_label(self.theme == value, theme::label(value))
-                            .clicked()
-                        {
-                            chosen = Some(value);
-                        }
-                    }
-                });
-            if let Some(choice) = chosen {
-                self.set_theme(choice, ui.ctx());
-            }
-            ui.separator();
-            if icons::add(ui, ButtonId::OpenStats).clicked() {
-                self.open_stats();
-            }
-        });
-
-        if let Some(message) = self.error.clone() {
-            ui.horizontal(|ui| {
-                let danger = ui.visuals().error_fg_color;
-                ui.colored_label(danger, message);
-                if icons::add(ui, ButtonId::Confirm).clicked() {
-                    self.error = None;
-                }
+                let pending = self
+                    .actions
+                    .iter()
+                    .filter(|action| action.status == ActionStatus::Pending)
+                    .count();
+                ui.label(format!("今日待办 {pending} 条"));
             });
-        }
+        });
     }
+}
+
+/// 超过 `max_chars` 时保留首尾，中间用省略号。
+pub(crate) fn elide_middle(text: &str, max_chars: usize) -> String {
+    let characters: Vec<char> = text.chars().collect();
+    if characters.len() <= max_chars {
+        return text.to_owned();
+    }
+    let keep = max_chars.saturating_sub(1);
+    let head = keep / 2;
+    let tail = keep - head;
+    let mut result: String = characters[..head].iter().collect();
+    result.push('…');
+    result.extend(&characters[characters.len() - tail..]);
+    result
 }

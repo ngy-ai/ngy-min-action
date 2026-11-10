@@ -21,6 +21,7 @@ pub(crate) enum Icon {
     Play,
     Chart,
     List,
+    Note,
 }
 
 /// 按钮语义：决定线宽与颜色来源。
@@ -58,6 +59,8 @@ pub(crate) enum ButtonId {
     Done,
     Skip,
     Undo,
+    Note,
+    RemoveImage,
 }
 
 impl ButtonId {
@@ -87,6 +90,8 @@ impl ButtonId {
         Self::Done,
         Self::Skip,
         Self::Undo,
+        Self::Note,
+        Self::RemoveImage,
     ];
 }
 
@@ -222,6 +227,16 @@ pub(crate) const fn spec(id: ButtonId) -> ButtonSpec {
             tip: "撤销",
             semantic: S::Normal,
         },
+        Id::Note => ButtonSpec {
+            icon: Icon::Note,
+            tip: "备注",
+            semantic: S::Normal,
+        },
+        Id::RemoveImage => ButtonSpec {
+            icon: Icon::Cross,
+            tip: "移除图片",
+            semantic: S::Normal,
+        },
     }
 }
 
@@ -337,6 +352,14 @@ fn draw_icon(painter: &egui::Painter, icon: Icon, rect: egui::Rect, stroke: egui
             line((-0.9, -0.6), (0.9, -0.6));
             line((-0.9, 0.0), (0.9, 0.0));
             line((-0.9, 0.6), (0.9, 0.6));
+        }
+        Icon::Note => {
+            line((-0.7, -0.9), (0.7, -0.9));
+            line((0.7, -0.9), (0.7, 0.9));
+            line((0.7, 0.9), (-0.7, 0.9));
+            line((-0.7, 0.9), (-0.7, -0.9));
+            line((-0.4, -0.2), (0.4, -0.2));
+            line((-0.4, 0.3), (0.4, 0.3));
         }
     }
 }

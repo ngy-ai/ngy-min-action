@@ -13,7 +13,8 @@ use crate::common::elapsed_ms;
 /// 当前期望的 schema 版本。
 ///
 /// 1 → 2 的变更：目标与分类增加 `name_folded` 列，唯一性改由整表唯一索引承担。
-pub(crate) const SCHEMA_VERSION: i64 = 2;
+/// 2 → 3 的变更：行动增加 `note` 列，新增 `action_images` 表；保留全部业务数据。
+pub(crate) const SCHEMA_VERSION: i64 = 3;
 
 /// 建表语句。
 ///
@@ -68,8 +69,22 @@ CREATE TABLE IF NOT EXISTS actions (
     seq          INTEGER NOT NULL,
     created_at   TEXT    NOT NULL,
     settled_at   TEXT,
+    note         TEXT,
     UNIQUE(task_id, on_date)
 );
+
+CREATE TABLE IF NOT EXISTS action_images (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    action_id     INTEGER NOT NULL REFERENCES actions(id) ON DELETE CASCADE,
+    file_name     TEXT    NOT NULL,
+    original_name TEXT    NOT NULL,
+    byte_size     INTEGER NOT NULL,
+    created_at    TEXT    NOT NULL,
+    UNIQUE(action_id, file_name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_action_images_action
+    ON action_images(action_id);
 
 CREATE TABLE IF NOT EXISTS review_progress (
     task_id        INTEGER PRIMARY KEY REFERENCES tasks(id) ON DELETE CASCADE,
@@ -107,6 +122,7 @@ CREATE TABLE IF NOT EXISTS settings (
 ///
 /// `foreign_keys=ON` 时父表不能先于子表删除，顺序颠倒会触发外键错误。
 const DROP_TABLES: &str = r"
+DROP TABLE IF EXISTS action_images;
 DROP TABLE IF EXISTS action_settlements;
 DROP TABLE IF EXISTS actions;
 DROP TABLE IF EXISTS review_progress;
@@ -176,10 +192,55 @@ pub(crate) fn apply(connection: &Connection) -> Result<(), SchemaError> {
     Ok(())
 }
 
-/// 把旧库清空并按新结构重建。
+/// 2 → 3 的增量升级语句。
 ///
-/// 清空不可逆，且必须整体成功：任一步失败都不改变库里的任何一个字节。
+/// 只做加列与建表，不触碰任何既有行；结构与 [`DDL`] 中对应片段保持一致。
+const V3_UPGRADE: &str = r"
+ALTER TABLE actions ADD COLUMN note TEXT;
+
+CREATE TABLE IF NOT EXISTS action_images (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    action_id     INTEGER NOT NULL REFERENCES actions(id) ON DELETE CASCADE,
+    file_name     TEXT    NOT NULL,
+    original_name TEXT    NOT NULL,
+    byte_size     INTEGER NOT NULL,
+    created_at    TEXT    NOT NULL,
+    UNIQUE(action_id, file_name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_action_images_action
+    ON action_images(action_id);
+";
+
+/// 把旧库升级到当前结构。
+///
+/// 2 → 3 保留全部业务数据；更早的版本缺少名称折叠列，无法原地补齐，仍按原有策略
+/// 清空重建。迁移必须整体成功：任一步失败都不改变库里的任何一个字节。
 fn migrate(connection: &Connection, from: i64) -> Result<(), SchemaError> {
+    if from == 2 {
+        return upgrade_v2_to_v3(connection);
+    }
+    rebuild(connection, from)
+}
+
+fn upgrade_v2_to_v3(connection: &Connection) -> Result<(), SchemaError> {
+    let started = Instant::now();
+    let transaction = connection.unchecked_transaction()?;
+    transaction.execute_batch(V3_UPGRADE)?;
+    transaction.pragma_update(None, "user_version", SCHEMA_VERSION)?;
+    transaction.commit()?;
+    info!(
+        op = "store_migrate",
+        from = 2,
+        to = SCHEMA_VERSION,
+        result = "ok",
+        elapsed_ms = elapsed_ms(started),
+        "旧库已增量升级，业务数据保留"
+    );
+    Ok(())
+}
+
+fn rebuild(connection: &Connection, from: i64) -> Result<(), SchemaError> {
     let started = Instant::now();
     let transaction = connection.unchecked_transaction()?;
     transaction.execute_batch(DROP_TABLES)?;

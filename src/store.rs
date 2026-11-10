@@ -5,6 +5,7 @@
 
 mod action;
 mod goal;
+mod note;
 mod reminder;
 mod schema;
 mod stats;
@@ -13,7 +14,7 @@ mod theme;
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use chrono::{NaiveDate, Utc};
 use rusqlite::Connection;
@@ -188,6 +189,46 @@ impl Store {
     #[must_use]
     pub fn path(&self) -> &Path {
         &self.path
+    }
+
+    /// 数据库所在目录，也是附件目录与数据位置的根。
+    #[must_use]
+    pub fn data_dir(&self) -> &Path {
+        self.path.parent().unwrap_or_else(|| Path::new("."))
+    }
+
+    /// 把当前库在线备份到 `path`。
+    ///
+    /// 源库保持打开，备份期间不阻塞读；目标文件由 SQLite 创建，调用方需保证它
+    /// 不存在于一个已有数据的目录里（`storage` 模块负责拒绝覆盖）。
+    ///
+    /// # Errors
+    ///
+    /// 目标无法创建或备份中断时返回 [`DomainError::Store`]。
+    pub fn backup_to(&self, path: &Path) -> Result<(), DomainError> {
+        let mut trace = OpTrace::begin("backup_to");
+        let connection = self.guard();
+        let mut destination = Connection::open(path)?;
+        {
+            let backup = rusqlite::backup::Backup::new(&connection, &mut destination)?;
+            backup.run_to_completion(100, Duration::from_millis(5), None)?;
+        }
+        trace.ok();
+        Ok(())
+    }
+
+    /// 运行 SQLite 的完整性检查，正常返回 `true`。
+    ///
+    /// # Errors
+    ///
+    /// 查询失败时返回 [`DomainError::Store`]。
+    pub fn integrity_ok(&self) -> Result<bool, DomainError> {
+        let mut trace = OpTrace::begin("integrity_check");
+        let connection = self.guard();
+        let result: String =
+            connection.query_row("PRAGMA integrity_check", [], |row| row.get(0))?;
+        trace.ok();
+        Ok(result.eq_ignore_ascii_case("ok"))
     }
 
     pub(crate) fn guard(&self) -> MutexGuard<'_, Connection> {

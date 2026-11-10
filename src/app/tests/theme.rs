@@ -111,7 +111,7 @@ fn status_bar_and_stats_dialog_render_in_both_themes() {
     for choice in [ThemeChoice::Light, ThemeChoice::Dark] {
         ctx.set_theme(preference(choice));
         let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
-            app.status_bar(ui);
+            app.toolbar(ui);
             let inner = ui.ctx().clone();
             app.ui_stats_dialog(&inner);
         });
@@ -144,7 +144,7 @@ fn every_dialog_renders_in_both_themes() {
     for choice in [ThemeChoice::Light, ThemeChoice::Dark] {
         ctx.set_theme(preference(choice));
         let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
-            app.status_bar(ui);
+            app.toolbar(ui);
             let inner = ui.ctx().clone();
             app.ui_new_goal_dialog(&inner);
             app.ui_new_category_dialog(&inner);

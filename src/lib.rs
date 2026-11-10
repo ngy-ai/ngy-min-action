@@ -4,9 +4,12 @@
 //! target 通过 [`app`] 模块挂载。模块划分与职责见 `specs/001-min-action-core/plan.md`。
 
 pub mod app;
+pub mod attachment;
 pub mod clock;
 pub mod common;
+pub mod config;
 pub mod model;
 pub mod notify;
 pub mod schedule;
+pub mod storage;
 pub mod store;

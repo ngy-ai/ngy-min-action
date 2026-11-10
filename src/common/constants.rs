@@ -43,3 +43,15 @@ pub const DEFERRED_RETENTION_DAYS: i64 = 7;
 /// 采用轮询而非精确定时，是为了在系统睡眠唤醒与用户改系统时间两种情况下都不漏触发；
 /// 2 秒同时满足「跨日后 5 秒内弹窗」的验收标准。
 pub const TICK_INTERVAL_SECS: u64 = 2;
+
+/// 待办备注的最大字符数，按 Unicode 标量计数，换行计入。
+pub const NOTE_MAX_CHARS: usize = 2000;
+
+/// 单张图片附件的最大字节数。
+pub const IMAGE_MAX_BYTES: u64 = 10 * 1024 * 1024;
+
+/// 图片单边的最大像素数，用于拒绝解压后体积失控的文件。
+pub const IMAGE_MAX_DIMENSION: u32 = 12_000;
+
+/// 历史待办每页的行数。
+pub const HISTORY_PAGE_SIZE: u16 = 50;

@@ -3,8 +3,9 @@
 use eframe::egui;
 
 use crate::app::MinActionApp;
+use crate::app::describe::status_text;
 use crate::app::icons::{self, ButtonId};
-use crate::model::{Action, ActionId, ActionKind, ActionStatus};
+use crate::model::{ActionId, ActionStatus};
 
 impl MinActionApp {
     pub(crate) fn ui_today_view(&mut self, ui: &mut egui::Ui) {
@@ -12,6 +13,7 @@ impl MinActionApp {
 
         let mut settle: Option<(ActionId, ActionStatus)> = None;
         let mut undo: Option<ActionId> = None;
+        let mut open_note: Option<ActionId> = None;
 
         if self.actions.is_empty() {
             ui.label("今天还没有行动。");
@@ -24,9 +26,15 @@ impl MinActionApp {
                 .max_height(260.0)
                 .show(ui, |ui| {
                     for action in &self.actions {
-                        let text = self.describe(action);
+                        let text = self.describe_action(action);
                         ui.horizontal(|ui| {
                             ui.label(text);
+                            if action.note.is_some() {
+                                ui.label("有备注");
+                            }
+                            if icons::add(ui, ButtonId::Note).clicked() {
+                                open_note = Some(action.id);
+                            }
                             if action.status == ActionStatus::Pending {
                                 if icons::add(ui, ButtonId::Done).clicked() {
                                     settle = Some((action.id, ActionStatus::Done));
@@ -66,41 +74,11 @@ impl MinActionApp {
                     .map(|()| "已撤销".to_owned())
             });
         }
+        if let Some(action) = open_note {
+            self.open_note(action, false);
+        }
 
         ui.separator();
         self.ui_task_section(ui);
-    }
-
-    fn describe(&self, action: &Action) -> String {
-        let task = self.all_tasks.iter().find(|item| item.id == action.task_id);
-        let task_name = task.map_or_else(
-            || format!("任务#{}", action.task_id.0),
-            |item| item.name.clone(),
-        );
-        let category_name = task
-            .and_then(|item| {
-                self.all_categories
-                    .iter()
-                    .find(|category| category.id == item.category_id)
-            })
-            .map_or_else(String::new, |category| category.name.clone());
-
-        match action.kind {
-            ActionKind::Review => format!(
-                "{category_name} · {task_name}（第 {} 级复习）",
-                action.review_level.unwrap_or(1)
-            ),
-            ActionKind::Regular => format!("{category_name} · {task_name}"),
-        }
-    }
-}
-
-fn status_text(status: ActionStatus) -> &'static str {
-    match status {
-        ActionStatus::Pending => "待完成",
-        ActionStatus::Done => "已完成",
-        ActionStatus::Skipped => "已跳过",
-        ActionStatus::Deferred => "已顺延",
-        ActionStatus::Expired => "已过期",
     }
 }
