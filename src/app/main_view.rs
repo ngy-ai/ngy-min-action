@@ -83,8 +83,9 @@ impl MinActionApp {
                         if icons::add(ui, arrow).clicked() {
                             toggle_goal = Some(goal.id);
                         }
+                        let count = self.goal_task_count(goal.id);
                         let name = ui
-                            .selectable_label(selected, &goal.name)
+                            .selectable_label(selected, format!("{}（{}）", goal.name, count))
                             .on_hover_text("左键选中，右键菜单");
                         name.context_menu(|ui| {
                             if let Some(action) = structure_menu::show(ui) {
@@ -118,8 +119,9 @@ impl MinActionApp {
                         ui.horizontal(|ui| {
                             ui.add_space(40.0);
                             let picked = self.selected_category == Some(category.id);
+                            let count = self.task_counts.get(&category.id).copied().unwrap_or(0);
                             let name = ui
-                                .selectable_label(picked, &category.name)
+                                .selectable_label(picked, format!("{}（{}）", category.name, count))
                                 .on_hover_text("左键选中，右键菜单");
                             name.context_menu(|ui| {
                                 if let Some(action) = structure_menu::show(ui) {
@@ -218,7 +220,6 @@ impl MinActionApp {
     }
 
     pub(crate) fn ui_task_section(&mut self, ui: &mut egui::Ui) {
-        ui.heading("任务");
         match self.selected_category {
             Some(_) => {
                 let mut create_task = false;

@@ -28,7 +28,7 @@ mod theme;
 mod today_view;
 mod toolbar;
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex};
@@ -137,6 +137,8 @@ impl FrequencyMode {
 /// 中央区页签。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TodoTab {
+    /// 任务管理：建任务、调频率与进度。
+    Tasks,
     /// 今天触发的待办。
     Today,
     /// 今天之前的历史待办。
@@ -197,6 +199,8 @@ pub struct MinActionApp {
     pub(crate) tasks: Vec<Task>,
     pub(crate) all_tasks: Vec<Task>,
     pub(crate) all_categories: Vec<Category>,
+    /// 每个分类下的任务数，供结构树展示条数。
+    pub(crate) task_counts: HashMap<CategoryId, usize>,
     pub(crate) actions: Vec<Action>,
     pub(crate) deferred: usize,
     pub(crate) daily_cap: u8,
@@ -278,6 +282,7 @@ impl MinActionApp {
             tasks: Vec::new(),
             all_tasks: Vec::new(),
             all_categories: Vec::new(),
+            task_counts: HashMap::new(),
             actions: Vec::new(),
             deferred: 0,
             daily_cap: 5,
@@ -410,6 +415,7 @@ impl MinActionApp {
 
         self.all_tasks = self.store.all_tasks()?;
         self.all_categories = self.store.all_categories()?;
+        self.recompute_task_counts();
 
         self.actions = self.store.generate_day(self.today, self.daily_cap)?;
         self.deferred = self.store.deferred_count(self.today)?;
@@ -424,6 +430,24 @@ impl MinActionApp {
         Ok(())
     }
 
+    /// 按分类聚合任务数，供结构树展示条数。
+    fn recompute_task_counts(&mut self) {
+        let mut counts: HashMap<CategoryId, usize> = HashMap::new();
+        for task in &self.all_tasks {
+            *counts.entry(task.category_id).or_default() += 1;
+        }
+        self.task_counts = counts;
+    }
+
+    /// 目标下的任务总数：汇总其所有分类的计数。
+    pub(crate) fn goal_task_count(&self, goal: GoalId) -> usize {
+        self.all_categories
+            .iter()
+            .filter(|category| category.goal_id == goal)
+            .map(|category| self.task_counts.get(&category.id).copied().unwrap_or(0))
+            .sum()
+    }
+
     /// 切换中央区页签；首次进入历史时加载第一页。
     pub(crate) fn switch_tab(&mut self, tab: TodoTab) {
         self.tab = tab;
@@ -435,6 +459,12 @@ impl MinActionApp {
     fn ui_tabs(&mut self, ui: &mut egui::Ui) {
         let mut next = None;
         ui.horizontal(|ui| {
+            if ui
+                .selectable_label(self.tab == TodoTab::Tasks, "任务")
+                .clicked()
+            {
+                next = Some(TodoTab::Tasks);
+            }
             if ui
                 .selectable_label(self.tab == TodoTab::Today, "今日待办")
                 .clicked()
@@ -453,6 +483,7 @@ impl MinActionApp {
         }
         ui.separator();
         match self.tab {
+            TodoTab::Tasks => self.ui_task_section(ui),
             TodoTab::Today => self.ui_today_view(ui),
             TodoTab::History => {
                 self.ensure_history();
