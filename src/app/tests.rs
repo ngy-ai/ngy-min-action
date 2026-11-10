@@ -28,6 +28,7 @@ mod render;
 mod reset;
 mod stats;
 mod storage;
+mod tabs;
 mod task_content;
 mod theme;
 mod workspace;
