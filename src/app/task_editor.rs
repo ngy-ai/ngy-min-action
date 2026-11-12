@@ -9,9 +9,11 @@ use std::sync::Arc;
 
 use gpui::{App, Context, Entity, Render, Window};
 use gpui_kit::component::input::{Input, InputState, Textarea, TextareaState};
+use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 
 use crate::app::MinActionApp;
+use crate::app::rich_content::render_rich_text;
 use crate::model::{Frequency, Task, TaskId, TaskMedia};
 use crate::store::Store;
 
@@ -60,7 +62,7 @@ impl TaskEditor {
 }
 
 impl Render for TaskEditor {
-    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let task_id = self.task_id;
         let root = self.root.clone();
         let name_state = self.name.clone();
@@ -69,6 +71,7 @@ impl Render for TaskEditor {
         let store = self.store.clone();
         let frequency_label = self.frequency.label();
         let media = self.media.clone();
+        let desc_preview = self.description.read(cx).value().to_string();
 
         div()
             .id("task-editor")
@@ -83,6 +86,16 @@ impl Render for TaskEditor {
             .child(field("名称", Input::new(&name_state)))
             .child(field("预计耗时（分钟）", Input::new(&est_state)))
             .child(field("内容", Textarea::new(&desc_state)))
+            .when(!desc_preview.trim().is_empty(), |this| {
+                this.child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap_1()
+                        .child(div().text_size(px(12.)).child("内容预览（点击链接打开）"))
+                        .child(render_rich_text(&desc_preview)),
+                )
+            })
             .child(div().child(format!("频率：{frequency_label}")))
             .child(media_block(&media))
             .child(
