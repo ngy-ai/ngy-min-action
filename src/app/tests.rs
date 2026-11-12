@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 
-use crate::app::MinActionApp;
+use crate::app::{MinActionApp, TodoTab};
 use crate::clock::SystemClock;
 use crate::config::Bootstrap;
 use crate::model::{Frequency, TaskDraft};
@@ -48,4 +48,41 @@ fn reload_loads_goals_categories_tasks_and_counts() {
     assert_eq!(app.selected_goal, Some(goal), "默认应选中唯一目标");
     assert_eq!(app.selected_category, Some(category), "默认应选中唯一分类");
     assert_eq!(app.goal_task_count(goal), 1, "目标任务汇总应为 1");
+}
+
+/// 选中目标后，分类应归一化到该目标下第一个分类。
+#[test]
+fn select_goal_normalizes_category() {
+    let (dir, store) = open_temp_store("select");
+    let goal1 = store.create_goal("AI", None).expect("目标1");
+    let cat1 = store.create_category(goal1, "口语").expect("分类1");
+    let goal2 = store.create_goal("健康", None).expect("目标2");
+    let cat2 = store.create_category(goal2, "运动").expect("分类2");
+    let (_tx, rx) = std::sync::mpsc::channel();
+    let bootstrap = Bootstrap::new(&dir);
+    let mut app =
+        MinActionApp::new(store, Arc::new(SystemClock), rx, bootstrap).expect("构造根视图");
+
+    app.select_goal(goal2);
+    assert_eq!(app.selected_goal, Some(goal2), "应选中目标2");
+    assert_eq!(app.selected_category, Some(cat2), "分类应归一化到目标2下");
+
+    app.select_category(cat1);
+    assert_eq!(app.selected_category, Some(cat1), "应选中分类1");
+    assert_eq!(app.selected_goal, Some(goal1), "所属目标应同步为目标1");
+}
+
+/// 切换页签应更新当前 tab 状态。
+#[test]
+fn switch_tab_updates_state() {
+    let (dir, store) = open_temp_store("tab");
+    let _goal = store.create_goal("AI", None).expect("目标");
+    let (_tx, rx) = std::sync::mpsc::channel();
+    let bootstrap = Bootstrap::new(&dir);
+    let mut app =
+        MinActionApp::new(store, Arc::new(SystemClock), rx, bootstrap).expect("构造根视图");
+
+    assert_eq!(app.tab, TodoTab::Tasks, "默认应为任务页");
+    app.switch_tab(TodoTab::History);
+    assert_eq!(app.tab, TodoTab::History, "应切换到历史页");
 }
