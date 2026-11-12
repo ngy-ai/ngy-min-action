@@ -28,6 +28,7 @@ mod render;
 mod reset;
 mod stats;
 mod storage;
+mod task_content;
 mod theme;
 mod workspace;
 
@@ -59,6 +60,7 @@ fn draft(name: &str) -> TaskDraft {
         name: name.to_owned(),
         frequency: Frequency::Daily,
         estimated_minutes: None,
+        description: None,
     }
 }
 

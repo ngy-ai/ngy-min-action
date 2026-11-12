@@ -20,6 +20,7 @@ fn task(id: i64, frequency: Frequency, last: Option<NaiveDate>) -> Task {
         name: format!("任务{id}"),
         frequency,
         estimated_minutes: None,
+        description: None,
         status: TaskStatus::Active,
         last_generated_on: last,
         created_at: "2026-11-01T00:00:00+00:00".to_owned(),

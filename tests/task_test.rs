@@ -20,6 +20,7 @@ fn draft(name: &str) -> TaskDraft {
         name: name.to_owned(),
         frequency: Frequency::Daily,
         estimated_minutes: None,
+        description: None,
     }
 }
 
@@ -98,6 +99,7 @@ fn tasks_are_stored_with_their_frequency() {
                 name: "隔三天".to_string(),
                 frequency: Frequency::EveryNDays(3),
                 estimated_minutes: None,
+                description: None,
             },
         )
         .expect("创建任务");
@@ -108,6 +110,7 @@ fn tasks_are_stored_with_their_frequency() {
                 name: "每周两次".to_string(),
                 frequency: Frequency::WeeklyN(2),
                 estimated_minutes: None,
+                description: None,
             },
         )
         .expect("创建任务");

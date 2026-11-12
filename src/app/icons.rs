@@ -49,6 +49,7 @@ pub(crate) enum ButtonId {
     ChevronDown,
     Rename,
     DeleteTask,
+    TaskDetail,
     DeleteConfirm,
     Pause,
     Resume,
@@ -80,6 +81,7 @@ impl ButtonId {
         Self::ChevronDown,
         Self::Rename,
         Self::DeleteTask,
+        Self::TaskDetail,
         Self::DeleteConfirm,
         Self::Pause,
         Self::Resume,
@@ -176,6 +178,11 @@ pub(crate) const fn spec(id: ButtonId) -> ButtonSpec {
             icon: Icon::Cross,
             tip: "删除任务",
             semantic: S::Danger,
+        },
+        Id::TaskDetail => ButtonSpec {
+            icon: Icon::Note,
+            tip: "任务内容",
+            semantic: S::Normal,
         },
         Id::DeleteConfirm => ButtonSpec {
             icon: Icon::Cross,

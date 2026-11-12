@@ -4,7 +4,8 @@ use rusqlite::{OptionalExtension, params};
 
 use crate::model::{
     CategoryId, DomainError, Frequency, MAX_TASK_NAME_CHARS, ReviewProgress, Task, TaskDraft,
-    TaskId, TaskStatus, validate_estimated_minutes, validate_name,
+    TaskId, TaskMedia, TaskMediaId, TaskMediaKind, TaskStatus, validate_description,
+    validate_estimated_minutes, validate_name,
 };
 use crate::store::action::map_progress;
 use crate::store::{OpTrace, Store, decode_date, encode_date, now_rfc3339};
@@ -42,15 +43,16 @@ impl Store {
 
         transaction.execute(
             "INSERT INTO tasks
-                (category_id, name, freq_kind, freq_interval, estimated_minutes, status, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, 'active', ?6)",
+                (category_id, name, freq_kind, freq_interval, estimated_minutes, status, created_at, description)
+             VALUES (?1, ?2, ?3, ?4, ?5, 'active', ?6, ?7)",
             params![
                 category.0,
                 name,
                 draft.frequency.kind(),
                 draft.frequency.raw_interval(),
                 estimated,
-                now_rfc3339()
+                now_rfc3339(),
+                draft.description,
             ],
         )?;
         let id = transaction.last_insert_rowid();
@@ -75,7 +77,7 @@ impl Store {
         let connection = self.guard();
         let mut statement = connection.prepare(
             "SELECT id, category_id, name, freq_kind, freq_interval, estimated_minutes,
-                    status, last_generated_on, created_at
+                    status, last_generated_on, created_at, description
                FROM tasks
               WHERE category_id = ?1 AND deleted_at IS NULL
               ORDER BY id",
@@ -101,7 +103,7 @@ impl Store {
         let connection = self.guard();
         let mut statement = connection.prepare(
             "SELECT id, category_id, name, freq_kind, freq_interval, estimated_minutes,
-                    status, last_generated_on, created_at
+                    status, last_generated_on, created_at, description
                FROM tasks
               WHERE deleted_at IS NULL
               ORDER BY id",
@@ -314,6 +316,203 @@ impl Store {
         trace.ok();
         Ok(items)
     }
+
+    /// 按标识读取单个任务。
+    ///
+    /// # Errors
+    ///
+    /// 任务不存在或已删除时返回 [`DomainError::NotFound`]。
+    pub fn task(&self, id: TaskId) -> Result<Task, DomainError> {
+        let mut trace = OpTrace::begin("task");
+        let connection = self.guard();
+        let task = connection
+            .query_row(
+                "SELECT id, category_id, name, freq_kind, freq_interval, estimated_minutes,
+                        status, last_generated_on, created_at, description
+                   FROM tasks WHERE id = ?1 AND deleted_at IS NULL",
+                params![id.0],
+                map_task,
+            )
+            .optional()?
+            .ok_or(DomainError::NotFound {
+                entity: "任务",
+                id: id.0,
+            })?;
+        trace.ok();
+        Ok(task)
+    }
+
+    /// 读取一个任务的内容。
+    ///
+    /// 无内容返回 `None`；任务不存在时返回 [`DomainError::NotFound`]。
+    ///
+    /// # Errors
+    ///
+    /// 任务不存在或查询失败时返回 [`DomainError`]。
+    pub fn task_description(&self, task: TaskId) -> Result<Option<String>, DomainError> {
+        let mut trace = OpTrace::begin("task_description");
+        let connection = self.guard();
+        let description = connection
+            .query_row(
+                "SELECT description FROM tasks WHERE id = ?1 AND deleted_at IS NULL",
+                params![task.0],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .optional()?
+            .ok_or(DomainError::NotFound {
+                entity: "任务",
+                id: task.0,
+            })?;
+        trace.ok();
+        Ok(description)
+    }
+
+    /// 保存或清除一个任务的内容。
+    ///
+    /// 入参按 [`validate_description`] 规范化；空白内容写成 `NULL`，等价于清除。
+    ///
+    /// # Errors
+    ///
+    /// 内容超长或含非法控制字符时返回 [`DomainError::InvalidValue`]；任务不存在时返回
+    /// [`DomainError::NotFound`]。
+    pub fn set_task_description(&self, task: TaskId, description: &str) -> Result<(), DomainError> {
+        let mut trace = OpTrace::begin("set_task_description");
+        let normalized = validate_description(description)?;
+        let connection = self.guard();
+        let updated = connection.execute(
+            "UPDATE tasks SET description = ?2 WHERE id = ?1 AND deleted_at IS NULL",
+            params![task.0, normalized],
+        )?;
+        if updated == 0 {
+            return Err(DomainError::NotFound {
+                entity: "任务",
+                id: task.0,
+            });
+        }
+        trace.ok();
+        Ok(())
+    }
+
+    /// 列出某任务的媒体附件，按加入顺序排列。
+    ///
+    /// # Errors
+    ///
+    /// 查询失败时返回 [`DomainError::Store`]。
+    pub fn task_media(&self, task: TaskId) -> Result<Vec<TaskMedia>, DomainError> {
+        let mut trace = OpTrace::begin("task_media");
+        let connection = self.guard();
+        let mut statement = connection.prepare(
+            "SELECT id, task_id, kind, file_name, original_name, byte_size, created_at
+               FROM task_content_media WHERE task_id = ?1 ORDER BY id",
+        )?;
+        let rows = statement.query_map(params![task.0], map_media)?;
+        let mut items = Vec::new();
+        for row in rows {
+            items.push(row?);
+        }
+        trace.ok();
+        Ok(items)
+    }
+
+    /// 记录一段已经落盘的媒体附件。
+    ///
+    /// `file_name` 必须是单个文件名（不含 `/` 与 `\`），由媒体存储模块生成。
+    ///
+    /// # Errors
+    ///
+    /// 文件名不合法时返回 [`DomainError::InvalidValue`]；任务不存在时返回
+    /// [`DomainError::NotFound`]。
+    pub fn add_task_media(
+        &self,
+        task: TaskId,
+        kind: TaskMediaKind,
+        file_name: &str,
+        original_name: &str,
+        byte_size: u64,
+    ) -> Result<TaskMedia, DomainError> {
+        let mut trace = OpTrace::begin("add_task_media");
+        if !is_single_component(file_name) {
+            return Err(DomainError::InvalidValue {
+                field: "媒体文件名",
+                expected: "不含路径分隔符的单个文件名".to_owned(),
+            });
+        }
+        let byte_size = i64::try_from(byte_size).map_err(|_| DomainError::InvalidValue {
+            field: "媒体大小",
+            expected: "不超过 i64 上限的字节数".to_owned(),
+        })?;
+        let connection = self.guard();
+        let exists = connection
+            .query_row(
+                "SELECT 1 FROM tasks WHERE id = ?1 AND deleted_at IS NULL",
+                params![task.0],
+                |row| row.get::<_, i64>(0),
+            )
+            .optional()?
+            .is_some();
+        if !exists {
+            return Err(DomainError::NotFound {
+                entity: "任务",
+                id: task.0,
+            });
+        }
+        let original_name = sanitize_original_name(original_name);
+        let created_at = now_rfc3339();
+        connection.execute(
+            "INSERT INTO task_content_media
+                (task_id, kind, file_name, original_name, byte_size, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                task.0,
+                kind.as_str(),
+                file_name,
+                original_name,
+                byte_size,
+                created_at
+            ],
+        )?;
+        let media = TaskMedia {
+            id: TaskMediaId(connection.last_insert_rowid()),
+            task_id: task,
+            kind,
+            file_name: file_name.to_owned(),
+            original_name,
+            byte_size: u64::try_from(byte_size).unwrap_or(0),
+            created_at,
+        };
+        trace.ok();
+        Ok(media)
+    }
+
+    /// 删除一段媒体附件的记录并返回它，供调用方清理磁盘文件。
+    ///
+    /// # Errors
+    ///
+    /// 记录不存在时返回 [`DomainError::NotFound`]。
+    pub fn delete_task_media(&self, media: TaskMediaId) -> Result<TaskMedia, DomainError> {
+        let mut trace = OpTrace::begin("delete_task_media");
+        let mut connection = self.guard();
+        let transaction = connection.transaction()?;
+        let media = transaction
+            .query_row(
+                "SELECT id, task_id, kind, file_name, original_name, byte_size, created_at
+                   FROM task_content_media WHERE id = ?1",
+                params![media.0],
+                map_media,
+            )
+            .optional()?
+            .ok_or(DomainError::NotFound {
+                entity: "媒体附件",
+                id: media.0,
+            })?;
+        transaction.execute(
+            "DELETE FROM task_content_media WHERE id = ?1",
+            params![media.id.0],
+        )?;
+        transaction.commit()?;
+        trace.ok();
+        Ok(media)
+    }
 }
 
 fn map_task(row: &rusqlite::Row<'_>) -> rusqlite::Result<Task> {
@@ -324,14 +523,51 @@ fn map_task(row: &rusqlite::Row<'_>) -> rusqlite::Result<Task> {
         .unwrap_or(crate::model::Frequency::Daily);
     let status: String = row.get(6)?;
     let last_generated: Option<String> = row.get(7)?;
+    let description: Option<String> = row.get(9)?;
     Ok(Task {
         id: TaskId(row.get(0)?),
         category_id: CategoryId(row.get(1)?),
         name: row.get(2)?,
         frequency,
         estimated_minutes: row.get(5)?,
+        description,
         status: TaskStatus::parse(&status),
         last_generated_on: last_generated.as_deref().and_then(decode_date),
         created_at: row.get(8)?,
     })
+}
+
+fn map_media(row: &rusqlite::Row<'_>) -> rusqlite::Result<TaskMedia> {
+    let byte_size: i64 = row.get(5)?;
+    Ok(TaskMedia {
+        id: TaskMediaId(row.get(0)?),
+        task_id: TaskId(row.get(1)?),
+        kind: TaskMediaKind::parse(&row.get::<_, String>(2)?),
+        file_name: row.get(3)?,
+        original_name: row.get(4)?,
+        byte_size: u64::try_from(byte_size).unwrap_or(0),
+        created_at: row.get(6)?,
+    })
+}
+
+fn is_single_component(value: &str) -> bool {
+    !value.is_empty()
+        && value != "."
+        && value != ".."
+        && !value.contains('/')
+        && !value.contains('\\')
+        && !value.contains('\0')
+}
+
+fn sanitize_original_name(raw: &str) -> String {
+    let cleaned: String = raw
+        .chars()
+        .filter(|character| !character.is_control())
+        .take(200)
+        .collect();
+    if cleaned.trim().is_empty() {
+        "媒体".to_owned()
+    } else {
+        cleaned
+    }
 }

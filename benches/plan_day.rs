@@ -34,6 +34,7 @@ fn tasks() -> Vec<Task> {
                 name: format!("任务 {id}"),
                 frequency: Frequency::Daily,
                 estimated_minutes: Some(15),
+                description: None,
                 status: TaskStatus::Active,
                 last_generated_on,
                 created_at: "2026-10-01T00:00:00+08:00".to_owned(),

@@ -15,7 +15,10 @@ mod note_dialog;
 mod popup;
 mod rename_dialog;
 mod reset_dialog;
+mod rich_content;
 mod stats_dialog;
+mod task_dialog;
+use crate::app::task_dialog::TaskDetailEditor;
 mod status_bar;
 mod storage_dialog;
 mod structure_menu;
@@ -40,7 +43,7 @@ use crate::common::elapsed_ms;
 use crate::config::Bootstrap;
 use crate::model::{
     Action, ActionId, ActionImage, Category, CategoryId, DeletionImpact, Goal, GoalId,
-    ReminderState, ReviewProgress, ReviewStats, Task, TaskId, ThemeChoice,
+    ReminderState, ReviewProgress, ReviewStats, Task, TaskId, TaskMedia, ThemeChoice,
 };
 use crate::store::Store;
 
@@ -150,6 +153,19 @@ pub(crate) struct HistoryState {
     pub(crate) error: Option<String>,
 }
 
+/// 备注窗口里展示的来源任务内容（只读）。
+#[derive(Debug)]
+pub(crate) struct SourceTask {
+    /// 任务标识，用于定位媒体附件文件。
+    pub(crate) task_id: TaskId,
+    /// 任务标题。
+    pub(crate) name: String,
+    /// 任务内容（富纯文本，可含链接与媒体）。
+    pub(crate) description: Option<String>,
+    /// 任务内容里的媒体附件。
+    pub(crate) media: Vec<TaskMedia>,
+}
+
 /// 备注窗口的编辑状态。
 #[derive(Debug)]
 pub(crate) struct NoteEditor {
@@ -159,6 +175,8 @@ pub(crate) struct NoteEditor {
     pub(crate) images: Vec<ActionImage>,
     pub(crate) read_only: bool,
     pub(crate) error: Option<String>,
+    /// 该行动所属的来源任务，用于备注弹窗左侧展示。
+    pub(crate) source: Option<SourceTask>,
 }
 
 /// 存储位置窗口的状态。
@@ -222,6 +240,7 @@ pub struct MinActionApp {
     pub(crate) show_storage: bool,
     pub(crate) storage: StorageDialog,
     pub(crate) show_about: bool,
+    pub(crate) task_detail: Option<TaskDetailEditor>,
 }
 
 impl MinActionApp {
@@ -302,6 +321,7 @@ impl MinActionApp {
             show_storage: false,
             storage: StorageDialog::default(),
             show_about: false,
+            task_detail: None,
         };
         app.reload()?;
         app.sync_popup();
@@ -657,6 +677,7 @@ impl eframe::App for MinActionApp {
         self.ui_stats_dialog(&ctx);
         self.ui_delete_dialog(&ctx);
         self.ui_note_dialog(&ctx);
+        self.ui_task_dialog(&ctx);
         self.ui_storage_dialog(&ctx);
         self.ui_about_dialog(&ctx);
     }
