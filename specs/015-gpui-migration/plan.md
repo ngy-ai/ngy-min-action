@@ -39,6 +39,20 @@
   | `egui::Window`（对话框） | `ManagedView` Modal/Popover（component）或自建浮层 `View` |
   | `ui.columns(2)`（两栏） | `div().flex().row().child(...).child(...)` |
 
+### T002 调研结论（gpui-component 0.9.1 已确认）
+
+经 docs.rs 核对，以下组件模块均存在，可直接使用（路径为 `gpui_kit::component::<模块>`）：
+
+- `button`（`Button`）、`input`（文本输入）、`tab`（页签/`TabBar`）、`list`（`v_virtual_list` /
+  `VirtualList` 虚拟列表）、`dialog`（模态弹窗，`WindowExt::dialog`/`sheet`）、`tree`（树）、
+  `menu` / `native_menu`、`select` / `combobox`、`sidebar`、`status_bar`、`toolbar`、`text`（富文本）。
+- 左右分栏用 `resizable` 模块的 `resizable_panel()` / `h_resizable` / `v_resizable`。
+- 布局容器 `h_flex()` / `v_flex()`；初始化 `gpui_kit::init()`。
+- 图片用 `gpui_kit` 根级 `Img` / `img(Path)`（`gpui_component` 无独立 img 模块）。
+- headless 测试沿用 gpui/gpui-kit 的测试宏（类似 `#[gpui::test]`），构造 `AppContext` 渲染真实组件。
+
+映射表据此为「可落地」而非「待确认」。
+
 - **媒体**：保留 `image` crate（图片解码校验）与 `rfd`（选文件）；渲染用 gpui-kit `Img`/`img()`
   加载本地路径，不再依赖 `egui_extras` 的 `FileLoader`。
 - **主题**：gpui-kit 内置主题系统，先用默认主题；`ThemeChoice`（System/Light/Dark）映射到 kit
