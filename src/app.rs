@@ -16,6 +16,7 @@ use crate::config::Bootstrap;
 use crate::model::{Category, CategoryId, Goal, GoalId, Task, TaskId};
 use crate::store::Store;
 
+mod rich_content;
 mod task_editor;
 
 /// 主窗口标题。
