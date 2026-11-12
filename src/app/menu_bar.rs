@@ -20,6 +20,10 @@ impl MinActionApp {
                 }
             });
             ui.menu_button("视图", |ui| {
+                if ui.button("任务").clicked() {
+                    switch_to = Some(TodoTab::Tasks);
+                    ui.close();
+                }
                 if ui.button("今日待办").clicked() {
                     switch_to = Some(TodoTab::Today);
                     ui.close();

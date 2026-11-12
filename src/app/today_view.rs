@@ -18,7 +18,7 @@ impl MinActionApp {
         if self.actions.is_empty() {
             ui.label("今天还没有行动。");
             ui.label(
-                "先在左侧建立目标与分类，再在下方添加一个任务，系统会自动生成今天的最小行动。",
+                "先在左侧建立目标与分类，再到「任务」页签添加一个任务，系统会自动生成今天的最小行动。",
             );
         } else {
             egui::ScrollArea::vertical()
@@ -77,8 +77,5 @@ impl MinActionApp {
         if let Some(action) = open_note {
             self.open_note(action, false);
         }
-
-        ui.separator();
-        self.ui_task_section(ui);
     }
 }
