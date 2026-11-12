@@ -1,4 +1,4 @@
-//! 启动编排：单实例锁、数据目录、后台运行时与窗口启动。
+//! 启动编排：单实例锁、数据目录、后台运行时与窗口启动（gpui-kit）。
 
 use std::fs::File;
 use std::path::Path;
@@ -9,7 +9,9 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result};
 use tracing::{info, warn};
 
-use ngy_min_action::app::{MinActionApp, TickEvent, WINDOW_SIZE, WINDOW_TITLE};
+use gpui_kit::{AppContext, WindowOptions};
+
+use ngy_min_action::app::{MinActionApp, TickEvent, WINDOW_TITLE};
 use ngy_min_action::clock::{Clock, SystemClock};
 use ngy_min_action::common::{TICK_INTERVAL_SECS, elapsed_ms};
 use ngy_min_action::config::Bootstrap;
@@ -50,23 +52,15 @@ pub(crate) fn run() -> Result<()> {
         "界面已就绪"
     );
 
-    let options = eframe::NativeOptions {
-        viewport: eframe::egui::ViewportBuilder::default()
-            .with_inner_size(WINDOW_SIZE)
-            .with_min_inner_size([640.0, 420.0]),
-        ..Default::default()
-    };
-
-    eframe::run_native(
-        WINDOW_TITLE,
-        options,
-        Box::new(move |cc| {
-            egui_extras::install_image_loaders(&cc.egui_ctx);
-            app.apply_theme(&cc.egui_ctx);
-            Ok(Box::new(app))
-        }),
-    )
-    .map_err(|error| anyhow::anyhow!("界面启动失败：{error}"))
+    gpui_kit::application().run(move |cx| {
+        gpui_kit::init(cx);
+        gpui_kit::open_window(WindowOptions::default(), cx, |window, cx| {
+            window.set_window_title(WINDOW_TITLE);
+            cx.new(|_| app)
+        })
+        .expect("打开主窗口失败");
+    });
+    Ok(())
 }
 
 /// 取单实例锁。返回 `None` 表示已有实例在运行。
