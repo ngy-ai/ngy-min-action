@@ -1,70 +1,66 @@
-//! `task_editor` 的无头验收：保存逻辑（`apply_edits`）写回 `Store`。
+//! 任务内容编辑器无头验收（T011）。
 //!
-//! 不依赖 GPU/窗口，直接调用 `apply_edits` 并断言 `Store` 中任务字段已更新。
+//! 保存写回逻辑抽成了自由函数 `apply_edits`（不依赖 GPU/窗口），
+//! 这里直接验证它把名称 / 内容 / 预计耗时正确写回 `Store`。
 
-use super::apply_edits;
+use std::path::PathBuf;
+
 use crate::model::{Frequency, TaskDraft};
 use crate::store::Store;
 
+use super::apply_edits;
+
 /// 在临时目录打开一个空库，便于测试构造数据。
-fn open_temp_store(tag: &str) -> (std::path::PathBuf, Store) {
+fn open_temp_store(tag: &str) -> (PathBuf, Store) {
     let dir = std::env::temp_dir().join(format!("ngy-min-action-015-editor-{tag}"));
     let _ = std::fs::remove_dir_all(&dir);
     let store = Store::open(&dir.join("data.db")).expect("应能创建临时数据库");
     (dir, store)
 }
 
+/// `apply_edits` 应把三项编辑写回 store 中对应任务。
 #[test]
 fn apply_edits_writes_back_to_store() {
     let (_dir, store) = open_temp_store("apply");
-    let goal = store.create_goal("AI", None).unwrap();
-    let category = store.create_category(goal, "口语").unwrap();
-    let task = store
-        .create_task(
-            category,
-            TaskDraft {
-                name: "原名称".into(),
-                frequency: Frequency::Daily,
-                estimated_minutes: None,
-                description: None,
-            },
-        )
-        .unwrap();
+    let goal = store.create_goal("AI", None).expect("目标");
+    let category = store.create_category(goal, "口语").expect("分类");
+    let draft = TaskDraft {
+        name: "原名称".to_owned(),
+        frequency: Frequency::Daily,
+        estimated_minutes: None,
+        description: None,
+    };
+    let task_id = store.create_task(category, draft).expect("任务");
 
-    apply_edits(&store, task, "新名称", "新内容", Some(15)).unwrap();
+    apply_edits(&store, task_id, "新名称", "新的内容", Some(30)).expect("写回应成功");
 
-    let tasks = store.tasks(category).unwrap();
-    let updated = tasks.iter().find(|t| t.id == task).expect("任务应存在");
-    assert_eq!(updated.name, "新名称", "名称应被写回");
+    let updated = store.task(task_id).expect("读取任务");
+    assert_eq!(updated.name, "新名称", "名称应更新");
     assert_eq!(
         updated.description.as_deref(),
-        Some("新内容"),
-        "内容应被写回"
+        Some("新的内容"),
+        "内容应更新"
     );
-    assert_eq!(updated.estimated_minutes, Some(15), "预计耗时应被写回");
+    assert_eq!(updated.estimated_minutes, Some(30), "预计耗时应更新");
 }
 
+/// 清空预计耗时应写回 `None`，而非 0。
 #[test]
-fn apply_edits_handles_blank_inputs() {
-    let (_dir, store) = open_temp_store("blank");
-    let goal = store.create_goal("G", None).unwrap();
-    let category = store.create_category(goal, "C").unwrap();
-    let task = store
-        .create_task(
-            category,
-            TaskDraft {
-                name: "X".into(),
-                frequency: Frequency::Daily,
-                estimated_minutes: None,
-                description: None,
-            },
-        )
-        .unwrap();
+fn apply_edits_clears_estimated_minutes() {
+    let (_dir, store) = open_temp_store("clear");
+    let goal = store.create_goal("AI", None).expect("目标");
+    let category = store.create_category(goal, "口语").expect("分类");
+    let draft = TaskDraft {
+        name: "T".to_owned(),
+        frequency: Frequency::Daily,
+        estimated_minutes: Some(15),
+        description: Some("旧内容".to_owned()),
+    };
+    let task_id = store.create_task(category, draft).expect("任务");
 
-    // 空名/空内容不应导致 panic；结果由 store 的校验决定（OK 或 Err 均可）。
-    let result = apply_edits(&store, task, "   ", "", None);
-    assert!(result.is_ok() || result.is_err());
+    apply_edits(&store, task_id, "T", "新内容", None).expect("写回应成功");
 
-    // 确保未 panic 且 store 仍可读。
-    let _ = store.tasks(category).unwrap();
+    let updated = store.task(task_id).expect("读取任务");
+    assert_eq!(updated.estimated_minutes, None, "清空后应写回 None 而非 0");
+    assert_eq!(updated.description.as_deref(), Some("新内容"), "内容应更新");
 }
