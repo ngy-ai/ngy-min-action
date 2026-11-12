@@ -1,15 +1,14 @@
-//! gpui-kit 根视图（迁移骨架 → Phase 1 数据桥接）。
+//! gpui-kit 根视图（Phase 2：结构树 + 三页签骨架）。
 //!
-//! 数据层（`Store` / `Model` / `Attachment`）不变，以 `Arc<Store>` 注入。本阶段把原 egui 版
-//! `MinActionApp` 的状态与 `reload()` 桥接过来：根视图持有目标/分类/任务数据与当前选择，并负责
-//! 首次与每次刷新时从 `Store` 重新载入。后续阶段把结构树、三页签、对话框等逐个从 egui 平移到
-//! gpui-kit。
+//! 数据层（`Store` / `Model` / `Attachment`）不变，以 `Arc<Store>` 注入。根视图持有目标/分类/任务
+//! 数据与当前选择，并在 `reload()` 时从 `Store` 重新载入。本阶段把布局搭出来：左侧结构树（目标/
+//! 分类 + 任务计数），右侧三页签（任务 / 今日待办 / 历史待办），交互通过 gpui 实体更新驱动重绘。
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use anyhow::Result;
-use gpui_kit::base::StyledExt;
+use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 
 use crate::clock::Clock;
@@ -27,7 +26,7 @@ pub enum TickEvent {
     Tick,
 }
 
-/// 中央区页签（Phase 2 渲染时消费）。
+/// 中央区页签。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TodoTab {
     /// 任务管理：建任务、调频率与进度。
@@ -36,6 +35,17 @@ pub enum TodoTab {
     Today,
     /// 今天之前的历史待办。
     History,
+}
+
+impl TodoTab {
+    /// 页签展示文案。
+    pub fn label(self) -> &'static str {
+        match self {
+            TodoTab::Tasks => "任务",
+            TodoTab::Today => "今日待办",
+            TodoTab::History => "历史待办",
+        }
+    }
 }
 
 /// 应用根视图：持有数据层与界面状态。
@@ -57,16 +67,13 @@ pub struct MinActionApp {
     /// 每个分类下的任务数，供结构树展示条数。
     pub(crate) task_counts: HashMap<CategoryId, usize>,
     /// 当前选中的目标；`None` 表示全部。
-    #[allow(dead_code)]
     pub(crate) selected_goal: Option<GoalId>,
     /// 当前选中的分类。
-    #[allow(dead_code)]
     pub(crate) selected_category: Option<CategoryId>,
     /// 当前选中的任务。
     #[allow(dead_code)]
     pub(crate) selected_task: Option<TaskId>,
     /// 当前中央区页签。
-    #[allow(dead_code)]
     pub(crate) tab: TodoTab,
 }
 
@@ -116,6 +123,29 @@ impl MinActionApp {
         Ok(())
     }
 
+    /// 切换到指定中央区页签。
+    pub(crate) fn switch_tab(&mut self, tab: TodoTab) {
+        self.tab = tab;
+    }
+
+    /// 选中目标，并把当前分类归一化到该目标下第一个分类。
+    pub(crate) fn select_goal(&mut self, goal: GoalId) {
+        self.selected_goal = Some(goal);
+        self.selected_category = self
+            .all_categories
+            .iter()
+            .find(|category| category.goal_id == goal)
+            .map(|category| category.id);
+    }
+
+    /// 选中分类，并同步其所属目标。
+    pub(crate) fn select_category(&mut self, category: CategoryId) {
+        self.selected_category = Some(category);
+        if let Some(category) = self.all_categories.iter().find(|c| c.id == category) {
+            self.selected_goal = Some(category.goal_id);
+        }
+    }
+
     /// 按分类聚合任务数，供结构树展示条数。
     fn recompute_task_counts(&mut self) {
         let mut counts: HashMap<CategoryId, usize> = HashMap::new();
@@ -126,13 +156,162 @@ impl MinActionApp {
     }
 
     /// 目标下的任务总数：汇总其所有分类的计数。
-    #[allow(dead_code)]
     pub(crate) fn goal_task_count(&self, goal: GoalId) -> usize {
         self.all_categories
             .iter()
             .filter(|category| category.goal_id == goal)
             .map(|category| self.task_counts.get(&category.id).copied().unwrap_or(0))
             .sum()
+    }
+
+    /// 渲染左侧结构树面板。
+    fn render_structure(&self, entity: Entity<Self>) -> impl IntoElement {
+        let selected_goal = self.selected_goal;
+        let selected_category = self.selected_category;
+        div()
+            .id("structure")
+            .w(px(240.))
+            .h_full()
+            .flex_shrink_0()
+            .border_r_1()
+            .overflow_y_scroll()
+            .child(div().px_3().py_2().child("结构"))
+            .children(
+                self.all_goals
+                    .iter()
+                    .enumerate()
+                    .flat_map(move |(gi, goal)| {
+                        let goal_id = goal.id;
+                        let goal_selected = selected_goal == Some(goal_id);
+                        let count = self.goal_task_count(goal_id);
+                        let entity_goal = entity.clone();
+                        let entity_cat = entity.clone();
+                        let mut rows = vec![
+                            div()
+                                .id(format!("goal-{gi}"))
+                                .px_3()
+                                .py_1()
+                                .cursor_pointer()
+                                .rounded_md()
+                                .when(goal_selected, |this| this.bg(rgb(0x2a_2a_2e)))
+                                .on_click(move |_ev, _window, cx| {
+                                    entity_goal.update(cx, |this, cx| {
+                                        this.select_goal(goal_id);
+                                        cx.notify();
+                                    });
+                                })
+                                .child(format!("{}（{}）", goal.name, count)),
+                        ];
+                        if goal_selected {
+                            for (ci, category) in self
+                                .all_categories
+                                .iter()
+                                .filter(|category| category.goal_id == goal_id)
+                                .enumerate()
+                            {
+                                let category_id = category.id;
+                                let cat_selected = selected_category == Some(category_id);
+                                let cat_count =
+                                    self.task_counts.get(&category_id).copied().unwrap_or(0);
+                                let entity_cat_item = entity_cat.clone();
+                                rows.push(
+                                    div()
+                                        .id(format!("cat-{gi}-{ci}"))
+                                        .px_3()
+                                        .pl_6()
+                                        .py_1()
+                                        .cursor_pointer()
+                                        .rounded_md()
+                                        .when(cat_selected, |this| this.bg(rgb(0x2a_2a_2e)))
+                                        .on_click(move |_ev, _window, cx| {
+                                            entity_cat_item.update(cx, |this, cx| {
+                                                this.select_category(category_id);
+                                                cx.notify();
+                                            });
+                                        })
+                                        .child(format!("{}（{}）", category.name, cat_count)),
+                                );
+                            }
+                        }
+                        rows.into_iter()
+                    }),
+            )
+    }
+
+    /// 渲染右侧中央区（页签栏 + 内容）。
+    fn render_main(&self, entity: Entity<Self>) -> impl IntoElement {
+        let tab = self.tab;
+        let tabs = [TodoTab::Tasks, TodoTab::Today, TodoTab::History];
+        let tab_buttons: Vec<_> = tabs
+            .iter()
+            .map(move |t| {
+                let active = *t == tab;
+                let tab_value = *t;
+                let entity = entity.clone();
+                div()
+                    .id(format!("tab-{}", t.label()))
+                    .px_3()
+                    .py_2()
+                    .cursor_pointer()
+                    .when(active, |this| this.border_b_2().bg(rgb(0x33_33_38)))
+                    .child(t.label())
+                    .on_click(move |_ev, _window, cx| {
+                        entity.update(cx, |this, cx| {
+                            this.switch_tab(tab_value);
+                            cx.notify();
+                        });
+                    })
+            })
+            .collect();
+        div()
+            .id("main")
+            .flex_1()
+            .h_full()
+            .child(
+                div()
+                    .id("tab-bar")
+                    .border_b_1()
+                    .gap_1()
+                    .child(div().id("tabs-row").flex().gap_1().children(tab_buttons)),
+            )
+            .child(
+                div()
+                    .id("content")
+                    .flex_1()
+                    .p_3()
+                    .child(self.render_tab_content()),
+            )
+    }
+
+    /// 渲染当前页签下的内容（Phase 2 仅任务页有真实数据，其余占位）。
+    fn render_tab_content(&self) -> impl IntoElement {
+        match self.tab {
+            TodoTab::Tasks => {
+                let tasks: Vec<&Task> = match self.selected_category {
+                    Some(category) => self
+                        .all_tasks
+                        .iter()
+                        .filter(|task| task.category_id == category)
+                        .collect(),
+                    None => self.all_tasks.iter().collect(),
+                };
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_1()
+                    .children(tasks.into_iter().map(|task| {
+                        div()
+                            .id(format!("task-{}", task.id.0))
+                            .px_2()
+                            .py_1()
+                            .rounded_md()
+                            .bg(rgb(0x24_24_28))
+                            .child(task.name.clone())
+                    }))
+            }
+            TodoTab::Today => div().child("今日待办（迁移中，Phase 2 后续填充）"),
+            TodoTab::History => div().child("历史待办（迁移中，Phase 2 后续填充）"),
+        }
     }
 }
 
@@ -143,21 +322,13 @@ impl Render for MinActionApp {
     fn render(
         &mut self,
         _window: &mut Window,
-        _cx: &mut Context<'_, MinActionApp>,
+        cx: &mut Context<'_, MinActionApp>,
     ) -> impl IntoElement {
-        let total_tasks: usize = self.task_counts.values().sum();
+        let entity = cx.entity();
         div()
             .size_full()
-            .v_flex()
-            .items_center()
-            .justify_center()
-            .gap_2()
-            .child("最小行动 · gpui-kit 迁移中")
-            .child(format!(
-                "已载入：目标 {} · 分类 {} · 任务 {}",
-                self.all_goals.len(),
-                self.all_categories.len(),
-                total_tasks,
-            ))
+            .flex()
+            .child(self.render_structure(entity.clone()))
+            .child(self.render_main(entity))
     }
 }
