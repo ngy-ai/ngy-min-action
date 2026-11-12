@@ -16,6 +16,8 @@ use crate::config::Bootstrap;
 use crate::model::{Category, CategoryId, Goal, GoalId, Task, TaskId};
 use crate::store::Store;
 
+mod task_editor;
+
 /// 主窗口标题。
 pub const WINDOW_TITLE: &str = "最小行动";
 
@@ -75,6 +77,8 @@ pub struct MinActionApp {
     pub(crate) selected_task: Option<TaskId>,
     /// 当前中央区页签。
     pub(crate) tab: TodoTab,
+    /// 当前打开的任务内容编辑器；`None` 表示未打开。
+    pub(crate) editing: Option<Entity<task_editor::TaskEditor>>,
 }
 
 impl MinActionApp {
@@ -98,6 +102,7 @@ impl MinActionApp {
             selected_category: None,
             selected_task: None,
             tab: TodoTab::Tasks,
+            editing: None,
         };
         app.reload()?;
         Ok(app)
@@ -144,6 +149,11 @@ impl MinActionApp {
         if let Some(category) = self.all_categories.iter().find(|c| c.id == category) {
             self.selected_goal = Some(category.goal_id);
         }
+    }
+
+    /// 关闭任务内容对话框。
+    pub(crate) fn close_editor(&mut self) {
+        self.editing = None;
     }
 
     /// 按分类聚合任务数，供结构树展示条数。
@@ -242,12 +252,13 @@ impl MinActionApp {
     fn render_main(&self, entity: Entity<Self>) -> impl IntoElement {
         let tab = self.tab;
         let tabs = [TodoTab::Tasks, TodoTab::Today, TodoTab::History];
+        let entity_for_tabs = entity.clone();
         let tab_buttons: Vec<_> = tabs
             .iter()
             .map(move |t| {
                 let active = *t == tab;
                 let tab_value = *t;
-                let entity = entity.clone();
+                let entity = entity_for_tabs.clone();
                 div()
                     .id(format!("tab-{}", t.label()))
                     .px_3()
@@ -279,14 +290,15 @@ impl MinActionApp {
                     .id("content")
                     .flex_1()
                     .p_3()
-                    .child(self.render_tab_content()),
+                    .child(self.render_tab_content(entity.clone())),
             )
     }
 
     /// 渲染当前页签下的内容（Phase 2 仅任务页有真实数据，其余占位）。
-    fn render_tab_content(&self) -> impl IntoElement {
+    fn render_tab_content(&self, entity: Entity<Self>) -> impl IntoElement {
         match self.tab {
             TodoTab::Tasks => {
+                let entity = entity.clone();
                 let tasks: Vec<&Task> = match self.selected_category {
                     Some(category) => self
                         .all_tasks
@@ -299,14 +311,40 @@ impl MinActionApp {
                     .flex()
                     .flex_col()
                     .gap_1()
-                    .children(tasks.into_iter().map(|task| {
+                    .children(tasks.into_iter().map(move |task| {
+                        let entity = entity.clone();
+                        let task_id = task.id;
+                        let name = task.name.clone();
                         div()
-                            .id(format!("task-{}", task.id.0))
+                            .id(format!("task-{}", task_id.0))
                             .px_2()
                             .py_1()
                             .rounded_md()
                             .bg(rgb(0x24_24_28))
-                            .child(task.name.clone())
+                            .cursor_pointer()
+                            .child(name)
+                            .on_click(move |_ev, window, cx| {
+                                let root = entity.clone();
+                                let store = root.read(cx).store.clone();
+                                let editor = cx.new(|c| {
+                                    let task_model = store
+                                        .all_tasks()
+                                        .ok()
+                                        .and_then(|ts| ts.into_iter().find(|t| t.id == task_id));
+                                    let task_model = task_model.expect("任务应存在");
+                                    task_editor::TaskEditor::new(
+                                        &task_model,
+                                        store,
+                                        root.clone(),
+                                        window,
+                                        c,
+                                    )
+                                });
+                                root.update(cx, |this, cx| {
+                                    this.editing = Some(editor);
+                                    cx.notify();
+                                });
+                            })
                     }))
             }
             TodoTab::Today => div().child("今日待办（迁移中，Phase 2 后续填充）"),
@@ -327,8 +365,21 @@ impl Render for MinActionApp {
         let entity = cx.entity();
         div()
             .size_full()
+            .relative()
             .flex()
             .child(self.render_structure(entity.clone()))
-            .child(self.render_main(entity))
+            .child(self.render_main(entity.clone()))
+            .when_some(self.editing.clone(), |this, editing| {
+                this.child(
+                    div()
+                        .absolute()
+                        .inset_0()
+                        .bg(rgb(0x00_00_00).opacity(0.5))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .child(div().bg(rgb(0x20_20_24)).rounded_lg().child(editing)),
+                )
+            })
     }
 }
