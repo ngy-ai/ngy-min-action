@@ -50,9 +50,14 @@
       复用 `Store::review_stats` 展示窗口分项/完成率/连续天数/任务阶段分布，零数据层改动
 - [x] T014 存储对话框迁移（TDD）：工具栏「存储」入口（tab-bar 右侧，顺带为 T015 铺底）打开只读面板，
       复用 `Store::data_dir` 并递归累加文件字节数展示数据目录与占用（人类可读），零数据层改动
+- [x] T014 重置复习进度对话框（TDD）：补 plan 第 16 行遗留的 `reset_dialog.rs` 模块；任务编辑器「重置进度」
+      按钮打开确认面板，确认经 `Store::reset_review_progress` 把遗忘曲线归零，任务不存在时保留对话框并提示「不存在」；零数据层改动
 - [x] T015 工具栏/菜单栏/状态栏（TDD）：工具栏含每日上限步进（`set_daily_cap`，越界拒 `InvalidValue`）、主题切换（System/Light/Dark，持久化 `set_theme_choice` 并经 `Theme::change`/系统外观应用）、统计/存储入口；菜单栏（标题）、状态栏（上限/主题/今日进度/历史条数）；零数据层改动
-- [ ] T016 把现有 `egui::Context` headless 测试（`src/app/tests/*`）改写为 gpui-kit 测试并转绿，
-      删除全部 egui 专属测试代码
+- [x] T016 测试迁移收尾：原 `src/app/tests/*` 的 egui `Context` headless 测试目录在迁移早期随 egui 移除已删除；
+      其行为由现 gpui-kit 测试接管——delete/frequency/rename/stats/storage/note/task_editor/rich_content 各 `tests.rs`
+      与 `src/app/tests.rs`（reload/计数/今日/历史/主题/上限）。`reset.rs` 对应的 `reset_dialog` 此前漏实现，本任务补齐
+      （含 `reset_dialog/tests.rs` 迁移 `resetting_review_progress_clears_level` 与 `resetting_missing_task_reports_not_found`）；
+      `context_menu`/`icons` 属 egui 专属机制（改名/删除已由行内按钮覆盖、图标为视觉），其 egui 测试已随目录删除。全部 egui 测试代码已清除，套件转绿
 
 ## Phase 5：收尾
 
