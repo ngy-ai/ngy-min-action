@@ -48,16 +48,34 @@
 - **VII 可观测性**：沿用既有 `tracing` 结构化日志，无 stdout 污染。
 - **VIII 安全**：输入在边界校验（如每日上限越界拒），无拼接注入，无机密入库。
 
-## 四、遗留手动验证（本会话未执行）
+## 四、GUI 截图验证（T018，代理于锁屏桌面执行）
 
-T018 要求隔离 `%LOCALAPPDATA%` 起 GUI 并深浅截图验证外观与三页签/计数。本执行环境为**无显示的 headless 沙箱**，无法启动 GUI 与截图，故标注：**本会话未执行**。
+执行环境为**锁屏中的 Windows 桌面**：`CopyFromScreen` 只能拍到锁屏界面，且锁屏下
+`SendInput` 点击进不了应用桌面。改用 `PrintWindow(hwnd, hdc, PW_RENDERFULLCONTENT)`
+直接抓 gpui 窗口内容成功；主题切换不经点击，直接改隔离库 `settings.theme` 后重启应用。
 
-建议用户在 Windows 环境执行：
+流程：隔离 `%LOCALAPPDATA%=D:\temp\ngy-gui-test` → `cargo build` → 启动
+`target/debug/ngy-min-action.exe` → `sqlite3` 预置 2 目标/3 分类/4 任务与
+`settings.theme`（light / dark 各一次）→ 每次启动后 `PrintWindow` 抓窗口。
 
-```powershell
-$env:LOCALAPPDATA = "D:\temp\ngy-gui-test"      # 隔离数据目录
-Remove-Item "$env:LOCALAPPDATA\.ngyproj.autosave" -ErrorAction SilentlyContinue  # 清残留自动保存
-cargo run --bin ngy-min-action
-```
+### 已验证 ✅
 
-随后对「任务/今日/历史」三页签、工具栏每日上限步进、主题切换（浅/深/跟随系统）、统计/存储/重置对话框各截一张图，确认布局与计数正确。
+| 项 | 结果 |
+| --- | --- |
+| 应用启动与渲染 | gpui-kit 窗口正常创建并渲染，无崩溃 |
+| 结构树与计数 | 健康(3)/锻炼(2)/饮食(1)/学习(1)，与种子数据一致，含 重命名/删除 按钮 |
+| 任务页签 | 所选分类「锻炼」下展示 晨跑/力量训练 |
+| 主题持久化与切换 | `settings.theme`=light/dark 重启后均正确应用（深色按钮相应高亮） |
+| 深色主题外观 | 全暗背景，文字/按钮/高亮一致，无异常 |
+
+截图：`D:\temp\shot_light.png`、`D:\temp\shot_dark.png`（1550×1133，未入库）。
+
+### 发现的外观问题 ⚠️
+
+**浅色主题下部分元素为硬编码深色，不随主题切换**：应用头部「最小行动」条、结构树选中行
+（`structure_tree.rs` 的 `rgb(0x2a_2a_2e)`）、任务列表行、「任务」页签胶囊、主题按钮胶囊。
+深色主题下无此问题（一切本就深色）。属样式打磨项，不阻塞迁移验收。
+
+### 未覆盖（锁屏无法点击，需解锁后人工补验）
+
+「今日待办」「历史待办」页签、工具栏每日上限步进、统计/存储/重置三个对话框的截图。
