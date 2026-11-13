@@ -3979,7 +3979,6 @@ dependencies = [
  "ngy-utils-tracing",
  "rfd",
  "rusqlite",
- "tokio",
  "tracing",
 ]
 
