@@ -1,10 +1,11 @@
 //! 任务内容对话框（Phase 3 / T011）。
 //!
 //! 以独立 gpui 视图渲染一个居中的任务编辑面板：可编辑名称、预计耗时（分钟）、
-//! 富纯文本内容。已有媒体附件以 [`Attachment`] 卡片只读渲染——图片内联预览、
-//! 音频/视频提供「打开」按钮（媒体的增删为 T011b，单独提交）。频率当前只读展示，
-//! 其编辑走独立的频率对话框（T014）。保存时把字段写回 `Store`，并通知根视图
-//! `reload()` 后关闭本对话框。
+//! 富纯文本内容。媒体附件以 [`Attachment`] 卡片渲染——图片内联预览、音频/视频
+//! 提供「打开」按钮，并支持「添加媒体」（经 `rfd` 选文件，拷入
+//! `data_dir/task_content/<task_id>/` 后写库）与逐条「删除」（删库记录并清磁盘文件）。
+//! 频率当前只读展示，其编辑走独立的频率对话框（T014）。保存时把字段写回 `Store`，
+//! 并通知根视图 `reload()` 后关闭本对话框。
 
 use std::path::Path;
 use std::sync::Arc;
@@ -21,7 +22,7 @@ use gpui_kit::*;
 
 use crate::app::MinActionApp;
 use crate::app::rich_content::render_rich_text;
-use crate::model::{Frequency, Task, TaskId, TaskMedia, TaskMediaKind};
+use crate::model::{Frequency, Task, TaskId, TaskMedia, TaskMediaId, TaskMediaKind};
 use crate::store::Store;
 
 /// 任务内容编辑器视图。
@@ -78,6 +79,7 @@ impl Render for TaskEditor {
         let store = self.store.clone();
         let frequency_label = self.frequency.label();
         let media = self.media.clone();
+        let entity = cx.entity().clone();
         let media_dir = self
             .store
             .data_dir()
@@ -109,7 +111,7 @@ impl Render for TaskEditor {
                 )
             })
             .child(div().child(format!("频率：{frequency_label}")))
-            .child(media_block(&media, &media_dir))
+            .child(media_block(&media, &media_dir, entity))
             .child(
                 div()
                     .flex()
@@ -133,19 +135,54 @@ fn field(label: &'static str, input: impl IntoElement) -> impl IntoElement {
         .child(input)
 }
 
-/// 只读展示已有媒体附件：图片内联预览，音频/视频提供「打开」按钮。
+/// 展示并管理任务媒体附件：头部有「添加媒体」按钮，每张卡片提供「打开」与「删除」。
 ///
 /// 媒体文件位于 `<data_dir>/task_content/<task_id>/<file_name>`，由 `media_dir` 给出目录。
-fn media_block(media: &[TaskMedia], media_dir: &Path) -> impl IntoElement {
+/// 增删通过 `entity`（即 [`TaskEditor`] 自身）在点击回调里写库并更新 `self.media`。
+fn media_block(
+    media: &[TaskMedia],
+    media_dir: &Path,
+    entity: Entity<TaskEditor>,
+) -> impl IntoElement {
     div()
         .flex()
         .flex_col()
         .gap_2()
-        .child(div().text_size(px(12.)).child("媒体"))
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .justify_between()
+                .child(div().text_size(px(12.)).child("媒体"))
+                .child(Button::new("add-media").label("添加媒体").on_click({
+                    let add_entity = entity.clone();
+                    move |_ev, _window, cx| {
+                        let picked = rfd::FileDialog::new()
+                            .add_filter(
+                                "媒体文件",
+                                &[
+                                    "png", "jpg", "jpeg", "gif", "webp", "bmp", "svg", "mp3",
+                                    "wav", "ogg", "m4a", "mp4", "webm", "mov", "avi", "mkv",
+                                ],
+                            )
+                            .pick_file();
+                        if let Some(path) = picked {
+                            add_entity.update(cx, |this, cx| {
+                                if let Err(e) = add_media_to_task(this, &path) {
+                                    tracing::error!("添加媒体失败：{e:#}");
+                                }
+                                cx.notify();
+                            });
+                        }
+                    }
+                })),
+        )
         .children(media.iter().enumerate().map(|(idx, m)| {
             let path = media_dir.join(&m.file_name);
             let open_uri = file_uri(&path);
             let is_image = matches!(m.kind, TaskMediaKind::Image);
+            let media_id = m.id;
+            let edit_entity = entity.clone();
             let card = Attachment::new()
                 .id(("media", idx))
                 .content(
@@ -153,13 +190,26 @@ fn media_block(media: &[TaskMedia], media_dir: &Path) -> impl IntoElement {
                         .title(AttachmentTitle::new(m.original_name.clone()))
                         .description(AttachmentDescription::new(format!("{:?}", m.kind))),
                 )
-                .actions(AttachmentActions::new().child(
-                    Button::new(("open-media", idx)).label("打开").on_click(
-                        move |_ev, _window, cx| {
-                            cx.open_url(&open_uri);
-                        },
+                .actions(
+                    AttachmentActions::new().child(
+                        div()
+                            .flex()
+                            .gap_2()
+                            .child(Button::new(("open-media", idx)).label("打开").on_click(
+                                move |_ev, _window, cx| {
+                                    cx.open_url(&open_uri);
+                                },
+                            ))
+                            .child(Button::new(("del-media", idx)).label("删除").on_click(
+                                move |_ev, _window, cx| {
+                                    edit_entity.update(cx, |this, cx| {
+                                        remove_media_from_task(this, media_id);
+                                        cx.notify();
+                                    });
+                                },
+                            )),
                     ),
-                ));
+                );
             if is_image {
                 card.axis(gpui::Axis::Vertical)
                     .media(AttachmentMedia::new().src(path))
@@ -167,6 +217,94 @@ fn media_block(media: &[TaskMedia], media_dir: &Path) -> impl IntoElement {
                 card
             }
         }))
+}
+
+/// 由文件扩展名推断媒体类型；无法识别时按图片处理，避免既有数据被丢弃。
+fn infer_kind(path: &Path) -> TaskMediaKind {
+    let ext = path
+        .extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    match ext.as_str() {
+        "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "svg" => TaskMediaKind::Image,
+        "mp3" | "wav" | "ogg" | "m4a" | "aac" | "flac" | "wma" => TaskMediaKind::Audio,
+        "mp4" | "webm" | "mov" | "avi" | "mkv" | "m4v" => TaskMediaKind::Video,
+        _ => TaskMediaKind::Image,
+    }
+}
+
+/// 把文件拷入本任务媒体目录并写库记录，返回新建的媒体记录。
+///
+/// 抽成自由函数，便于在无 GPU 的测试中直接验证「拷文件 + 写库」闭环。
+pub(crate) fn add_media_file(
+    store: &Store,
+    task_id: TaskId,
+    src: &Path,
+) -> anyhow::Result<TaskMedia> {
+    let media_dir = store
+        .data_dir()
+        .join("task_content")
+        .join(task_id.0.to_string());
+    std::fs::create_dir_all(&media_dir).map_err(|e| anyhow::anyhow!("创建媒体目录失败：{e}"))?;
+    let original_name = src
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("媒体")
+        .to_string();
+    let ext = src
+        .extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    let kind = infer_kind(src);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let file_name = if ext.is_empty() {
+        format!("m{nanos}")
+    } else {
+        format!("m{nanos}.{ext}")
+    };
+    std::fs::copy(src, media_dir.join(&file_name))
+        .map_err(|e| anyhow::anyhow!("拷贝媒体文件失败：{e}"))?;
+    let byte_size = std::fs::metadata(media_dir.join(&file_name))?.len();
+    store
+        .add_task_media(task_id, kind, &file_name, &original_name, byte_size)
+        .map_err(|e| anyhow::anyhow!("记录媒体元数据失败：{e}"))
+}
+
+/// 删除一段媒体：先删库记录（得到文件名），再清磁盘文件。出错时记录日志。
+///
+/// 抽成自由函数，便于在无 GPU 的测试中直接验证「删库 + 删文件」闭环。
+pub(crate) fn remove_media_file(store: &Store, task_id: TaskId, media_id: TaskMediaId) {
+    match store.delete_task_media(media_id) {
+        Ok(media) => {
+            let path = store
+                .data_dir()
+                .join("task_content")
+                .join(task_id.0.to_string())
+                .join(&media.file_name);
+            if let Err(e) = std::fs::remove_file(&path) {
+                tracing::warn!("删除媒体磁盘文件失败（记录已移除）：{path:?}：{e}");
+            }
+        }
+        Err(e) => tracing::error!("删除媒体记录失败：{e}"),
+    }
+}
+
+/// 把用户选中的文件加入本任务（写库 + 刷新列表）。
+fn add_media_to_task(this: &mut TaskEditor, src: &Path) -> anyhow::Result<()> {
+    add_media_file(&this.store, this.task_id, src)?;
+    this.media = this.store.task_media(this.task_id).unwrap_or_default();
+    Ok(())
+}
+
+/// 从本任务删除一段媒体（删库 + 删文件 + 刷新列表）。
+fn remove_media_from_task(this: &mut TaskEditor, media_id: TaskMediaId) {
+    remove_media_file(&this.store, this.task_id, media_id);
+    this.media = this.store.task_media(this.task_id).unwrap_or_default();
 }
 
 /// 把本地路径转成 `file://` URI，交给系统默认程序打开。
