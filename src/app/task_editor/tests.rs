@@ -3,12 +3,12 @@
 //! 保存写回逻辑抽成了自由函数 `apply_edits`（不依赖 GPU/窗口），
 //! 这里直接验证它把名称 / 内容 / 预计耗时正确写回 `Store`。
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::model::{Frequency, TaskDraft};
 use crate::store::Store;
 
-use super::apply_edits;
+use super::{apply_edits, file_uri};
 
 /// 在临时目录打开一个空库，便于测试构造数据。
 fn open_temp_store(tag: &str) -> (PathBuf, Store) {
@@ -63,4 +63,23 @@ fn apply_edits_clears_estimated_minutes() {
     let updated = store.task(task_id).expect("读取任务");
     assert_eq!(updated.estimated_minutes, None, "清空后应写回 None 而非 0");
     assert_eq!(updated.description.as_deref(), Some("新内容"), "内容应更新");
+}
+
+/// `file_uri` 应把本地路径转成可被系统打开的 `file://` URI，
+/// 并把 Windows 反斜杠规范为正斜杠。
+#[test]
+fn file_uri_normalizes_windows_separators() {
+    let path = Path::new("C:\\Users\\me\\任务\\a.jpg");
+    assert_eq!(
+        file_uri(path),
+        "file:///C:/Users/me/任务/a.jpg",
+        "反斜杠应规范为正斜杠，并加 file:/// 前缀"
+    );
+}
+
+/// `file_uri` 对已是正斜杠的路径保持原样。
+#[test]
+fn file_uri_keeps_forward_slashes() {
+    let path = Path::new("/data/task_content/1/clip.mp4");
+    assert_eq!(file_uri(path), "file:////data/task_content/1/clip.mp4");
 }
