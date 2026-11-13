@@ -1,0 +1,63 @@
+# 015 gpui-kit 迁移 · 验收记录
+
+**分支**：`015-gpui-migration`（基于 `main`，未改动 `main`）
+**作者**：单开发者自我复核（宪法「单开发者仓库自我证明」）
+**日期**：2026-11-13
+
+## 一、迁移范围与结果
+
+将原有 `egui` + `eframe` 界面整体迁移到 `gpui-kit`（gpui 0.9）。`Cargo.toml` 已无 `egui`/`eframe`，`src/` 无任何 egui 残留；数据层（`store`/`model`/`config`/`common`）零改动。
+
+| 模块 | 状态 | 说明 |
+| --- | --- | --- |
+| 结构树（目标/分类/任务） | ✅ | `app.rs` 渲染，改名/删除/频率/重置/备注按钮 |
+| 三页签（任务/今日/历史） | ✅ | today_view / history_view / task_editor 各自 `tests.rs` 验收 |
+| 今日页 | ✅ | 生成/结算/跳过，计数回到结构树 |
+| 历史页 | ✅ | 分页/结算/撤销，就地更新内存分页 |
+| 任务内容编辑器 | ✅ | 名称/描述/预计耗时/频率编辑，写回 store |
+| 备注对话框 | ✅ | 左右两栏（来源任务/当前备注），写回 action.note |
+| 富文本查看 | ✅ | 解析 `**粗**`、`*斜*`、`- 列表` |
+| 重命名对话框 | ✅ | 目标/分类改名，错误可重试 |
+| 删除对话框 | ✅ | 影响范围预览 + 级联删除确认 |
+| 频率对话框 | ✅ | 改频率，影响范围预览 |
+| 统计对话框 | ✅ | 7/30/90 天复习统计 |
+| 存储对话框 | ✅ | 数据目录占用递归累加 |
+| 重置进度对话框 | ✅ | 补 plan 第 16 行遗漏的 `reset_dialog.rs`；确认归零，任务不存在保留并提示 |
+| 工具栏/菜单栏/状态栏 | ✅ | 每日上限步进（越界拒）、主题切换（System/Light/Dark 持久化并应用）、统计/存储入口；启动应用已存主题 |
+| 测试迁移（T016） | ✅ | 原 `src/app/tests/*` egui headless 目录随迁移早期删除；行为由现 gpui-kit 测试接管 |
+
+## 二、门禁（六项 CI 本地全部转绿）
+
+| 门禁 | 结果 |
+| --- | --- |
+| `cargo fmt --check` | ✅ |
+| `cargo clippy --all-targets --all-features -- -D warnings` | ✅ |
+| `cargo test --all-targets --all-features` | ✅（lib 53 + 集成 100+ 全绿） |
+| `cargo machete`（未用依赖） | ✅ 无 |
+| `cargo audit`（漏洞） | ⚠️ 仅 `zbus`/`zvariant` 传递依赖 `unmaintained` 与 `async-executor` `yanked`（warning 级，CI `cargo audit` 不阻断）；属 gpui-kit 的 Linux D-Bus 依赖，非 015 直接引入，未新增抑制 |
+| 治理作业（文件行数/死代码抑制） | ✅ `app.rs` 679 行（< 700 上限），全仓零 `#[allow(dead_code)]` |
+
+## 三、宪法复核（I–VIII）
+
+- **I 文件规模**：最大源文件 `app.rs` 679 行，其余均 < 700；拆分出 `toolbar.rs`/`dialogs.rs`。
+- **II 质量/可维护性**：移除惰性 `spawn_ticker` 与死字段 `ticks`/`bootstrap`/`selected_task`（顺带移除未用 `tokio` 依赖）；无 `#[allow(dead_code)]`，无注释代码，无 TODO。
+- **III 测试先行**：每个对话框/页签按 TDD 先写测试后实现。
+- **IV 对外接触面**：`MinActionApp::new` 等库 API 命名统一；错误走 `Result<DomainError>`。
+- **V 性能**：无性能敏感变更。
+- **VI 简单性**：无当前消费者的配置/开关/抽象均已删除。
+- **VII 可观测性**：沿用既有 `tracing` 结构化日志，无 stdout 污染。
+- **VIII 安全**：输入在边界校验（如每日上限越界拒），无拼接注入，无机密入库。
+
+## 四、遗留手动验证（本会话未执行）
+
+T018 要求隔离 `%LOCALAPPDATA%` 起 GUI 并深浅截图验证外观与三页签/计数。本执行环境为**无显示的 headless 沙箱**，无法启动 GUI 与截图，故标注：**本会话未执行**。
+
+建议用户在 Windows 环境执行：
+
+```powershell
+$env:LOCALAPPDATA = "D:\temp\ngy-gui-test"      # 隔离数据目录
+Remove-Item "$env:LOCALAPPDATA\.ngyproj.autosave" -ErrorAction SilentlyContinue  # 清残留自动保存
+cargo run --bin ngy-min-action
+```
+
+随后对「任务/今日/历史」三页签、工具栏每日上限步进、主题切换（浅/深/跟随系统）、统计/存储/重置对话框各截一张图，确认布局与计数正确。
