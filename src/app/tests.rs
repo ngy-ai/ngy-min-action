@@ -86,3 +86,47 @@ fn switch_tab_updates_state() {
     app.switch_tab(TodoTab::History);
     assert_eq!(app.tab, TodoTab::History, "应切换到历史页");
 }
+
+/// 删除目标的影响范围应汇总其下分类与任务数。
+#[test]
+fn goal_deletion_impact_sums_categories_and_tasks() {
+    let (dir, store) = open_temp_store("impact-goal");
+    let goal = store.create_goal("G", None).expect("目标");
+    let cat1 = store.create_category(goal, "C1").expect("分类1");
+    let cat2 = store.create_category(goal, "C2").expect("分类2");
+    let draft = TaskDraft {
+        name: "t".to_owned(),
+        frequency: Frequency::Daily,
+        estimated_minutes: None,
+        description: None,
+    };
+    let _ = store.create_task(cat1, draft.clone());
+    let _ = store.create_task(cat2, draft);
+    let bootstrap = Bootstrap::new(&dir);
+    let (_tx, rx) = std::sync::mpsc::channel();
+    let app = MinActionApp::new(store, Arc::new(SystemClock), rx, bootstrap).expect("构造根视图");
+    let impact = app.goal_deletion_impact(goal);
+    assert_eq!(impact.categories, 2, "应波及 2 个分类");
+    assert_eq!(impact.tasks, 2, "应波及 2 条任务");
+}
+
+/// 删除分类的影响范围应只含其下任务数。
+#[test]
+fn category_deletion_impact_counts_tasks() {
+    let (dir, store) = open_temp_store("impact-cat");
+    let goal = store.create_goal("G", None).expect("目标");
+    let cat = store.create_category(goal, "C").expect("分类");
+    let draft = TaskDraft {
+        name: "t".to_owned(),
+        frequency: Frequency::Daily,
+        estimated_minutes: None,
+        description: None,
+    };
+    let _ = store.create_task(cat, draft);
+    let bootstrap = Bootstrap::new(&dir);
+    let (_tx, rx) = std::sync::mpsc::channel();
+    let app = MinActionApp::new(store, Arc::new(SystemClock), rx, bootstrap).expect("构造根视图");
+    let impact = app.category_deletion_impact(cat);
+    assert_eq!(impact.categories, 0, "分类删除不影响其他分类");
+    assert_eq!(impact.tasks, 1, "应波及 1 条任务");
+}
