@@ -8,11 +8,13 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use anyhow::Result;
+use chrono::NaiveDate;
 use gpui::{AnyElement, App, ClickEvent, Window};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 
 use crate::clock::Clock;
+use crate::common::HISTORY_PAGE_SIZE;
 use crate::config::Bootstrap;
 use crate::model::{
     Action, ActionId, ActionStatus, Category, CategoryId, DeletionImpact, Frequency, Goal, GoalId,
@@ -22,6 +24,7 @@ use crate::store::Store;
 
 mod delete_dialog;
 mod frequency_dialog;
+mod history_view;
 mod note_dialog;
 mod rename_dialog;
 mod rich_content;
@@ -121,6 +124,12 @@ pub struct MinActionApp {
     pub(crate) dialog: Option<StructDialog>,
     /// 今日行动列表（含已结算与顺延），供今日页渲染与完成/跳过/撤销。
     pub(crate) today_actions: Vec<Action>,
+    /// 历史待办（累计已加载页），供历史页渲染与结算。
+    pub(crate) history_actions: Vec<Action>,
+    /// 历史分页游标，用于「加载更多」。
+    pub(crate) history_cursor: Option<(NaiveDate, i64)>,
+    /// 历史是否还有更早的页。
+    pub(crate) history_has_more: bool,
 }
 
 impl MinActionApp {
@@ -147,8 +156,12 @@ impl MinActionApp {
             editing: None,
             dialog: None,
             today_actions: Vec::new(),
+            history_actions: Vec::new(),
+            history_cursor: None,
+            history_has_more: false,
         };
         app.reload()?;
+        app.load_history_first()?;
         Ok(app)
     }
 
@@ -197,6 +210,52 @@ impl MinActionApp {
     pub(crate) fn undo_today_action(&mut self, action_id: ActionId) -> Result<()> {
         self.store.undo_last_settlement(action_id)?;
         self.reload_today()?;
+        Ok(())
+    }
+
+    /// 载入历史待办首页（重置游标与累计列表），供初始化与刷新。
+    pub(crate) fn load_history_first(&mut self) -> Result<()> {
+        let today = self.clock.today();
+        let page = self.store.actions_page(today, None, HISTORY_PAGE_SIZE)?;
+        self.history_actions = page.actions;
+        self.history_cursor = page.next_cursor;
+        self.history_has_more = page.has_more;
+        Ok(())
+    }
+
+    /// 加载更早的一页历史待办，追加到现有列表；无更多页时为空操作。
+    pub(crate) fn load_history_more(&mut self) -> Result<()> {
+        if !self.history_has_more {
+            return Ok(());
+        }
+        let today = self.clock.today();
+        let cursor = self.history_cursor;
+        let page = self.store.actions_page(today, cursor, HISTORY_PAGE_SIZE)?;
+        self.history_actions.extend(page.actions);
+        self.history_cursor = page.next_cursor;
+        self.history_has_more = page.has_more;
+        Ok(())
+    }
+
+    /// 结算一条历史行动（完成/跳过），并就地更新内存状态以保留分页。
+    pub(crate) fn settle_history_action(
+        &mut self,
+        action_id: ActionId,
+        next: ActionStatus,
+    ) -> Result<()> {
+        self.store.settle_action(action_id, next)?;
+        if let Some(action) = self.history_actions.iter_mut().find(|a| a.id == action_id) {
+            action.status = next;
+        }
+        Ok(())
+    }
+
+    /// 撤销一条历史行动最近一次结算，并就地更新内存状态以保留分页。
+    pub(crate) fn undo_history_action(&mut self, action_id: ActionId) -> Result<()> {
+        self.store.undo_last_settlement(action_id)?;
+        if let Some(action) = self.history_actions.iter_mut().find(|a| a.id == action_id) {
+            action.status = ActionStatus::Pending;
+        }
         Ok(())
     }
 
@@ -640,7 +699,7 @@ impl MinActionApp {
                     }))
             }
             TodoTab::Today => div().child(today_view::render(entity.clone(), self)),
-            TodoTab::History => div().child("历史待办（迁移中，Phase 2 后续填充）"),
+            TodoTab::History => div().child(history_view::render(entity.clone(), self)),
         }
     }
 }
