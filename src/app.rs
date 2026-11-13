@@ -9,21 +9,20 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use chrono::NaiveDate;
-use gpui::{AnyElement, App, ClickEvent, Window};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 
 use crate::clock::Clock;
-use crate::common::{DAILY_CAP_DEFAULT, DAILY_CAP_MAX, DAILY_CAP_MIN, HISTORY_PAGE_SIZE};
-use crate::config::Bootstrap;
+use crate::common::{DAILY_CAP_DEFAULT, HISTORY_PAGE_SIZE};
 use crate::model::{
-    Action, ActionId, ActionStatus, Category, CategoryId, DeletionImpact, Frequency, Goal, GoalId,
-    Task, TaskId, ThemeChoice,
+    Action, ActionId, ActionStatus, Category, CategoryId, DeletionImpact, Goal, GoalId, Task,
+    ThemeChoice,
 };
 use crate::store::Store;
 use gpui_kit::component::theme::{Theme, ThemeMode};
 
 mod delete_dialog;
+mod dialogs;
 mod frequency_dialog;
 mod history_view;
 mod note_dialog;
@@ -34,16 +33,10 @@ mod stats_dialog;
 mod storage_dialog;
 mod task_editor;
 mod today_view;
+mod toolbar;
 
 /// 主窗口标题。
 pub const WINDOW_TITLE: &str = "最小行动";
-
-/// 后台 ticker 投递的事件（跨日检测由根视图消费）。
-#[derive(Debug, Clone, Copy)]
-pub enum TickEvent {
-    /// 定时心跳。
-    Tick,
-}
 
 /// 结构树中被重命名/删除的对象：目标或分类。
 #[derive(Debug, Clone, Copy)]
@@ -98,12 +91,7 @@ impl TodoTab {
 /// 应用根视图：持有数据层与界面状态。
 pub struct MinActionApp {
     store: Arc<Store>,
-    #[allow(dead_code)]
     clock: Arc<dyn Clock>,
-    #[allow(dead_code)]
-    ticks: std::sync::mpsc::Receiver<TickEvent>,
-    #[allow(dead_code)]
-    bootstrap: Bootstrap,
 
     /// 全部目标，供结构树渲染。
     pub(crate) all_goals: Vec<Goal>,
@@ -117,9 +105,6 @@ pub struct MinActionApp {
     pub(crate) selected_goal: Option<GoalId>,
     /// 当前选中的分类。
     pub(crate) selected_category: Option<CategoryId>,
-    /// 当前选中的任务。
-    #[allow(dead_code)]
-    pub(crate) selected_task: Option<TaskId>,
     /// 当前中央区页签。
     pub(crate) tab: TodoTab,
     /// 当前打开的任务内容编辑器；`None` 表示未打开。
@@ -142,24 +127,16 @@ pub struct MinActionApp {
 
 impl MinActionApp {
     /// 构造根视图状态；数据层已就绪，构造时即载入一次。
-    pub fn new(
-        store: Store,
-        clock: Arc<dyn Clock>,
-        ticks: std::sync::mpsc::Receiver<TickEvent>,
-        bootstrap: Bootstrap,
-    ) -> Result<Self> {
+    pub fn new(store: Store, clock: Arc<dyn Clock>) -> Result<Self> {
         let mut app = Self {
             store: Arc::new(store),
             clock,
-            ticks,
-            bootstrap,
             all_goals: Vec::new(),
             all_categories: Vec::new(),
             all_tasks: Vec::new(),
             task_counts: HashMap::new(),
             selected_goal: None,
             selected_category: None,
-            selected_task: None,
             tab: TodoTab::Tasks,
             editing: None,
             dialog: None,
@@ -322,111 +299,6 @@ impl MinActionApp {
     /// 关闭结构树对话框（重命名/删除/频率）。
     pub(crate) fn close_dialog(&mut self) {
         self.dialog = None;
-    }
-
-    /// 打开频率编辑对话框：依据当前频率预选种类，构造对话框实体并挂到根视图。
-    pub(crate) fn open_frequency_dialog(
-        &mut self,
-        root: Entity<MinActionApp>,
-        editor: Entity<task_editor::TaskEditor>,
-        current: Frequency,
-        window: &mut Window,
-        cx: &mut App,
-    ) {
-        let dialog = cx.new(|c| {
-            frequency_dialog::FrequencyDialog::new(editor, root.clone(), current, window, c)
-        });
-        root.update(cx, |this, cx| {
-            this.dialog = Some(StructDialog::Frequency(dialog));
-            cx.notify();
-        });
-    }
-
-    /// 打开复习统计对话框：从数据层算出 `ReviewStats` 后构造对话框挂在根视图。
-    pub(crate) fn open_stats(
-        &mut self,
-        root: Entity<MinActionApp>,
-        _window: &mut Window,
-        cx: &mut App,
-    ) {
-        let today = self.clock.today();
-        let stats = match self
-            .store
-            .review_stats(today, stats_dialog::STATS_WINDOW_DAYS)
-        {
-            Ok(stats) => stats,
-            Err(e) => {
-                tracing::error!("读取复习统计失败：{e:#}");
-                return;
-            }
-        };
-        let dialog = cx.new(|_c| stats_dialog::StatsDialog::new(stats, root.clone()));
-        root.update(cx, |this, cx| {
-            this.dialog = Some(StructDialog::Stats(dialog));
-            cx.notify();
-        });
-    }
-
-    /// 打开存储对话框：从数据目录递归算出占用后构造对话框挂在根视图。
-    pub(crate) fn open_storage(
-        &mut self,
-        root: Entity<MinActionApp>,
-        _window: &mut Window,
-        cx: &mut App,
-    ) {
-        let info = storage_dialog::collect_storage(self.store.data_dir());
-        let dialog = cx.new(|_c| storage_dialog::StorageDialog::new(info, root.clone()));
-        root.update(cx, |this, cx| {
-            this.dialog = Some(StructDialog::Storage(dialog));
-            cx.notify();
-        });
-    }
-
-    /// 打开行动备注对话框：用来源任务上下文与既有备注构造两栏对话框挂在根视图。
-    pub(crate) fn open_note_dialog(
-        &mut self,
-        root: Entity<MinActionApp>,
-        action_id: ActionId,
-        context: note_dialog::NoteContext,
-        window: &mut Window,
-        cx: &mut App,
-    ) {
-        let dialog = cx.new(|c| {
-            note_dialog::NoteDialog::new(
-                context,
-                action_id,
-                self.store.clone(),
-                root.clone(),
-                window,
-                c,
-            )
-        });
-        root.update(cx, |this, cx| {
-            this.dialog = Some(StructDialog::Note(dialog));
-            cx.notify();
-        });
-    }
-
-    /// 打开重置复习进度对话框：依据任务名构造确认面板挂在根视图。
-    pub(crate) fn open_reset_dialog(
-        &mut self,
-        root: Entity<MinActionApp>,
-        task_id: TaskId,
-        _window: &mut Window,
-        cx: &mut App,
-    ) {
-        let task_name = self
-            .store
-            .task(task_id)
-            .map(|task| task.name)
-            .unwrap_or_default();
-        let dialog = cx.new(|_c| {
-            reset_dialog::ResetDialog::new(task_id, task_name, self.store.clone(), root.clone())
-        });
-        root.update(cx, |this, cx| {
-            this.dialog = Some(StructDialog::Reset(dialog));
-            cx.notify();
-        });
     }
 
     /// 删除一个目标将波及的范围（分类数、任务数），用于删除确认文案。
@@ -692,117 +564,6 @@ impl MinActionApp {
             )
     }
 
-    /// 渲染顶部菜单栏（应用标题 + 迁移版标识）。
-    fn render_menu_bar(&self) -> impl IntoElement {
-        div()
-            .id("menu-bar")
-            .flex()
-            .items_center()
-            .justify_between()
-            .px_2()
-            .py_1()
-            .border_b_1()
-            .bg(rgb(0x1e_1e_22))
-            .child(
-                div()
-                    .font_weight(gpui::FontWeight::BOLD)
-                    .child(WINDOW_TITLE),
-            )
-            .child(
-                div()
-                    .text_size(px(11.))
-                    .text_color(rgb(0x88_88_88))
-                    .child("gpui-kit 迁移版"),
-            )
-    }
-
-    /// 渲染工具栏：每日上限步进、主题切换、统计与存储入口。
-    fn render_toolbar(&self, entity: Entity<MinActionApp>) -> impl IntoElement {
-        let cap = self.daily_cap;
-        let theme = self.theme_choice;
-        div()
-            .id("toolbar")
-            .flex()
-            .items_center()
-            .gap_4()
-            .px_2()
-            .py_1()
-            .border_b_1()
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_1()
-                    .child(div().child("每日上限"))
-                    .child(cap_button(
-                        entity.clone(),
-                        "cap-dec",
-                        "−",
-                        cap.saturating_sub(1).max(DAILY_CAP_MIN),
-                    ))
-                    .child(div().min_w(px(18.)).text_center().child(cap.to_string()))
-                    .child(cap_button(
-                        entity.clone(),
-                        "cap-inc",
-                        "+",
-                        cap.saturating_add(1).min(DAILY_CAP_MAX),
-                    )),
-            )
-            .child(self.theme_selector(entity.clone(), theme))
-            .child(stats_button(entity.clone()))
-            .child(storage_button(entity.clone()))
-    }
-
-    /// 渲染主题切换三段：跟随系统 / 浅色 / 深色，当前偏好高亮。
-    fn theme_selector(
-        &self,
-        entity: Entity<MinActionApp>,
-        current: ThemeChoice,
-    ) -> impl IntoElement {
-        let choices = [
-            (ThemeChoice::System, "跟随系统"),
-            (ThemeChoice::Light, "浅色"),
-            (ThemeChoice::Dark, "深色"),
-        ];
-        div()
-            .flex()
-            .items_center()
-            .gap_1()
-            .child(div().child("主题"))
-            .children(choices.into_iter().map(move |(choice, label)| {
-                theme_button(entity.clone(), choice, label, choice == current)
-            }))
-    }
-
-    /// 渲染底部状态栏：每日上限、主题、今日完成进度、历史条数。
-    fn render_status_bar(&self) -> impl IntoElement {
-        let done = self
-            .today_actions
-            .iter()
-            .filter(|a| a.status.is_settled())
-            .count();
-        let total = self.today_actions.len();
-        let theme_label = match self.theme_choice {
-            ThemeChoice::System => "跟随系统",
-            ThemeChoice::Light => "浅色",
-            ThemeChoice::Dark => "深色",
-        };
-        div()
-            .id("status-bar")
-            .flex()
-            .items_center()
-            .gap_4()
-            .px_2()
-            .py_1()
-            .border_t_1()
-            .text_size(px(11.))
-            .text_color(rgb(0x99_99_99))
-            .child(format!("每日上限 {}", self.daily_cap))
-            .child(format!("主题 {theme_label}"))
-            .child(format!("今日 完成 {done}/{total}"))
-            .child(format!("历史 {}", self.history_actions.len()))
-    }
-
     /// 渲染当前页签下的内容（Phase 2 仅任务页有真实数据，其余占位）。
     fn render_tab_content(&self, entity: Entity<Self>) -> impl IntoElement {
         match self.tab {
@@ -944,94 +705,6 @@ fn struct_action(
         .hover(|this| this.text_color(rgb(0xcc_cc_cc)))
         .child(label)
         .on_click(handler)
-}
-
-/// 工具栏「统计」入口：打开复习统计对话框（顺带为 T015 工具栏铺底）。
-fn stats_button(app: Entity<MinActionApp>) -> impl IntoElement {
-    div()
-        .id("open-stats")
-        .px_2()
-        .py_1()
-        .cursor_pointer()
-        .rounded_md()
-        .text_size(px(12.))
-        .child("统计")
-        .on_click(move |_ev, window, cx| {
-            app.update(cx, |root, cx| {
-                let app_entity = cx.entity().clone();
-                root.open_stats(app_entity, window, cx);
-                cx.notify();
-            });
-        })
-}
-
-/// 工具栏「存储」入口：打开存储对话框（顺带为 T015 工具栏铺底）。
-fn storage_button(app: Entity<MinActionApp>) -> impl IntoElement {
-    div()
-        .id("open-storage")
-        .px_2()
-        .py_1()
-        .cursor_pointer()
-        .rounded_md()
-        .text_size(px(12.))
-        .child("存储")
-        .on_click(move |_ev, window, cx| {
-            app.update(cx, |root, cx| {
-                let app_entity = cx.entity().clone();
-                root.open_storage(app_entity, window, cx);
-                cx.notify();
-            });
-        })
-}
-
-/// 工具栏「每日上限」步进按钮：点击经 `set_daily_cap` 写库并刷新今日列表。
-fn cap_button(
-    app: Entity<MinActionApp>,
-    id: &'static str,
-    label: &'static str,
-    target: u8,
-) -> impl IntoElement {
-    div()
-        .id(id)
-        .px_2()
-        .py_0()
-        .cursor_pointer()
-        .rounded_md()
-        .bg(rgb(0x2c2c32))
-        .text_size(px(12.))
-        .child(label)
-        .on_click(move |_ev, _window, cx| {
-            app.update(cx, |root, cx| {
-                let _ = root.set_daily_cap(target);
-                cx.notify();
-            });
-        })
-}
-
-/// 工具栏「主题」单选项：点击经 `set_theme` 持久化并立即应用 gpui 主题。
-fn theme_button(
-    app: Entity<MinActionApp>,
-    choice: ThemeChoice,
-    label: &'static str,
-    active: bool,
-) -> impl IntoElement {
-    div()
-        .id(format!("theme-{}", choice.as_str()))
-        .px_2()
-        .py_0()
-        .cursor_pointer()
-        .rounded_md()
-        .when(active, |this| this.bg(rgb(0x3a_3a_42)))
-        .when(!active, |this| this.bg(rgb(0x2c2c32)))
-        .text_size(px(12.))
-        .child(label)
-        .on_click(move |_ev, window, cx| {
-            apply_theme_choice(choice, window, cx);
-            app.update(cx, |root, cx| {
-                let _ = root.set_theme(choice);
-                cx.notify();
-            });
-        })
 }
 
 /// 打开重命名对话框：构造对话框实体并挂到根视图。
