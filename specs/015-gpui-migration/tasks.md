@@ -63,9 +63,12 @@
 
 - [x] T017 门禁复核（六项 CI 全部本地转绿）：`fmt --check` / `clippy -D warnings` / `test --all-targets --all-features`
       / `machete` / `audit` 全过；复核宪法 I–VIII 并修两项治理门禁阻断：
-      - 宪法 I/II：原 `app.rs` 990 行且含 4 处 `#[allow(dead_code)]` 会令 governance 作业失败。已将 app.rs 拆出 `toolbar.rs`（菜单/工具栏/状态栏+4 按钮）
-        与 `dialogs.rs`（open_* 方法），现 679 行（< 700 上限）；移除死字段 `ticks`/`bootstrap`/`selected_task`（run.rs 惰性 ticker 一并删除，
-        连带移除未用 `tokio` 依赖，machete 仍干净）与多余 `#[allow]`（clock 仍被使用）。
+      - 宪法 I/II：原 `app.rs` 990 行且含 4 处 `#[allow(dead_code)]` 会令 governance 作业失败。已将 app.rs 拆出 `toolbar.rs`（菜单/工具栏/状态栏+4 按钮）、
+        `dialogs.rs`（open_* 方法）与 `structure_tree.rs`（结构树渲染+重命名/删除动作），现 529 行；`model.rs` 将 015 新增的
+        `ReviewProgress`/`ReminderState`/`DeletionImpact` 抽到 `review.rs` 并再导出，现 682 行（均 < 700 上限）；移除死字段
+        `ticks`/`bootstrap`/`selected_task`（run.rs 惰性 ticker 一并删除，连带移除未用 `tokio` 依赖，machete 仍干净）与多余 `#[allow]`（clock 仍被使用）。
+      - CI 构建：原 `lint`/`test` 作业在 `ubuntu-latest` 因 gpui-kit 需 `fontconfig` 等 Linux 原生库而失败；本应用为 Windows 桌面程序（gpui-kit 在 Windows 直接链接，
+        本地构建已验证），故将 `lint`/`test` 作业改用 `windows-latest`（format/governance/audit/secrets 仍用 ubuntu，不编译故无影响）。
       - `audit`：仅 `zbus`/`zvariant` 传递依赖的 `unmaintained` 与 `async-executor` 的 `yanked` 告警（warning 级，CI `cargo audit` 不阻断），
         属 gpui-kit 的 Linux D-Bus 依赖，非 015 直接引入，按宪法「不为让 CI 变绿而抑制」原则不新增 `audit.toml` 抑制。
 - [x] T018 GUI 验证：隔离 `%LOCALAPPDATA%` 起 GUI 深浅截图（**本会话未执行**——headless 无显示环境；步骤见 `acceptance.md` 第四节，待用户在 Windows 执行）
