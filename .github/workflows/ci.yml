@@ -28,7 +28,7 @@ jobs:
 
   lint:
     name: cargo clippy -D warnings
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
       - name: Install toolchain from rust-toolchain.toml
@@ -46,7 +46,7 @@ jobs:
 
   test:
     name: cargo test
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
       - name: Install toolchain from rust-toolchain.toml
