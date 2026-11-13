@@ -32,7 +32,15 @@ fn apply_edits_writes_back_to_store() {
     };
     let task_id = store.create_task(category, draft).expect("任务");
 
-    apply_edits(&store, task_id, "新名称", "新的内容", Some(30)).expect("写回应成功");
+    apply_edits(
+        &store,
+        task_id,
+        "新名称",
+        "新的内容",
+        Some(30),
+        Frequency::EveryNDays(3),
+    )
+    .expect("写回应成功");
 
     let updated = store.task(task_id).expect("读取任务");
     assert_eq!(updated.name, "新名称", "名称应更新");
@@ -42,6 +50,7 @@ fn apply_edits_writes_back_to_store() {
         "内容应更新"
     );
     assert_eq!(updated.estimated_minutes, Some(30), "预计耗时应更新");
+    assert_eq!(updated.frequency, Frequency::EveryNDays(3), "频率应更新");
 }
 
 /// 清空预计耗时应写回 `None`，而非 0。
@@ -58,11 +67,12 @@ fn apply_edits_clears_estimated_minutes() {
     };
     let task_id = store.create_task(category, draft).expect("任务");
 
-    apply_edits(&store, task_id, "T", "新内容", None).expect("写回应成功");
+    apply_edits(&store, task_id, "T", "新内容", None, Frequency::WeeklyN(2)).expect("写回应成功");
 
     let updated = store.task(task_id).expect("读取任务");
     assert_eq!(updated.estimated_minutes, None, "清空后应写回 None 而非 0");
     assert_eq!(updated.description.as_deref(), Some("新内容"), "内容应更新");
+    assert_eq!(updated.frequency, Frequency::WeeklyN(2), "频率应更新");
 }
 
 /// `file_uri` 应把本地路径转成可被系统打开的 `file://` URI，
