@@ -68,5 +68,5 @@
         连带移除未用 `tokio` 依赖，machete 仍干净）与多余 `#[allow]`（clock 仍被使用）。
       - `audit`：仅 `zbus`/`zvariant` 传递依赖的 `unmaintained` 与 `async-executor` 的 `yanked` 告警（warning 级，CI `cargo audit` 不阻断），
         属 gpui-kit 的 Linux D-Bus 依赖，非 015 直接引入，按宪法「不为让 CI 变绿而抑制」原则不新增 `audit.toml` 抑制。
-- [ ] T018 隔离 `%LOCALAPPDATA%` 起 GUI，深浅截图验证外观与三页签/计数（标注本会话是否执行）
-- [ ] T019 勾选本清单、填写验收记录，按逻辑拆分提交并开 PR（含宪法复核与单开发者仓库自我证明）
+- [x] T018 GUI 验证：隔离 `%LOCALAPPDATA%` 起 GUI 深浅截图（**本会话未执行**——headless 无显示环境；步骤见 `acceptance.md` 第四节，待用户在 Windows 执行）
+- [x] T019 勾选本清单、填写验收记录（`acceptance.md`），按逻辑拆分提交并开 PR（宪法复核见 `acceptance.md` 第三节）
