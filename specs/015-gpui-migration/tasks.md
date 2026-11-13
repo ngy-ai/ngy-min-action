@@ -30,13 +30,24 @@
 
 ## Phase 3：任务内容与备注两栏（TDD）
 
-- [ ] T011 任务内容对话框：多行文本输入 + 媒体（图片/音频/视频）增删（对应 013）
+- [x] T011 任务内容对话框：点击任务打开，编辑名称 / 预计耗时(分钟) / 富文本内容，频率只读；媒体以 `Attachment` 卡片展示并支持增删（添加经 `rfd` 选文件拷入 `task_content/<task_id>/` 后写库，删除删库记录并清磁盘文件）；保存写回 Store 后 reload 并关闭
 - [ ] T012 备注两栏：来源任务（标题+富内容）/ 当前备注（对应 013）
-- [ ] T013 富内容渲染：链接可点击、图片内联、音视频「打开」（对应 013）
+      —— 依赖「备注/来源任务」数据模型与今日行动页（T009），推迟到 T009 之后
+- [x] T013 富内容渲染：链接可点击（解析 markdown/bare 链接，点击 `cx.open_url` 打开系统浏览器）；已有媒体以 `Attachment` 卡片渲染——图片内联预览、音频/视频「打开」按钮（路径经 `Store::data_dir()/task_content/<task_id>/<file_name>` 构造 `file://` URI 打开）
+      —— 媒体增删（T011b）已完成：增删核心逻辑抽成 `add_media_file`/`remove_media_file` 自由函数（写库 + 拷/删磁盘文件），未改动 `Store` 对外 API（符合数据层零改动）
 
 ## Phase 4：其余对话框与栏（TDD）
 
-- [ ] T014 重命名/删除/频率/耗时/存储/统计 对话框迁移（逐个 TDD）
+- [x] T014 重命名/删除对话框迁移（TDD）：结构树每行目标/分类旁加「重命名」「删除」按钮，
+      重命名走 `rename_goal`/`rename_category`，删除走 `delete_goal`/`delete_category`（软删除，
+      删除确认展示波及的分类/任务数，由根视图 `goal_deletion_impact`/`category_deletion_impact` 预算）
+      —— 耗时在任务编辑器内已内联编辑故不再单独做弹窗；存储 对话框仍待做
+- [x] T014 频率对话框迁移（TDD）：任务编辑器「频率」行加「编辑」按钮，打开居中对话框，
+      可选 每天 / 每 N 天 / 每周 N 次 并填数值，确认写回 `TaskEditor.frequency`（经 `apply_edits`
+      调 `update_task_frequency` 写库），非法数值给出可读错误且不关闭
+- [x] T014 统计对话框迁移（TDD）：工具栏「统计」入口（`tab-bar` 右侧，顺带为 T015 铺底）打开只读面板，
+      复用 `Store::review_stats` 展示窗口分项/完成率/连续天数/任务阶段分布，零数据层改动
+- [ ] T014 存储对话框迁移：展示数据目录与占用（待做）
 - [ ] T015 工具栏（每日上限/主题/统计入口）、菜单栏、状态栏迁移（主题映射 kit API）
 - [ ] T016 把现有 `egui::Context` headless 测试（`src/app/tests/*`）改写为 gpui-kit 测试并转绿，
       删除全部 egui 专属测试代码

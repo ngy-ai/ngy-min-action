@@ -21,6 +21,7 @@ mod delete_dialog;
 mod frequency_dialog;
 mod rename_dialog;
 mod rich_content;
+mod stats_dialog;
 mod task_editor;
 
 /// 主窗口标题。
@@ -51,6 +52,8 @@ pub(crate) enum StructDialog {
     Delete(Entity<delete_dialog::DeleteDialog>),
     /// 编辑任务频率。
     Frequency(Entity<frequency_dialog::FrequencyDialog>),
+    /// 复习统计展示。
+    Stats(Entity<stats_dialog::StatsDialog>),
 }
 
 /// 中央区页签。
@@ -203,6 +206,31 @@ impl MinActionApp {
         });
         root.update(cx, |this, cx| {
             this.dialog = Some(StructDialog::Frequency(dialog));
+            cx.notify();
+        });
+    }
+
+    /// 打开复习统计对话框：从数据层算出 `ReviewStats` 后构造对话框挂在根视图。
+    pub(crate) fn open_stats(
+        &mut self,
+        root: Entity<MinActionApp>,
+        _window: &mut Window,
+        cx: &mut App,
+    ) {
+        let today = self.clock.today();
+        let stats = match self
+            .store
+            .review_stats(today, stats_dialog::STATS_WINDOW_DAYS)
+        {
+            Ok(stats) => stats,
+            Err(e) => {
+                tracing::error!("读取复习统计失败：{e:#}");
+                return;
+            }
+        };
+        let dialog = cx.new(|_c| stats_dialog::StatsDialog::new(stats, root.clone()));
+        root.update(cx, |this, cx| {
+            this.dialog = Some(StructDialog::Stats(dialog));
             cx.notify();
         });
     }
@@ -455,8 +483,12 @@ impl MinActionApp {
                 div()
                     .id("tab-bar")
                     .border_b_1()
-                    .gap_1()
-                    .child(div().id("tabs-row").flex().gap_1().children(tab_buttons)),
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .px_2()
+                    .child(div().id("tabs-row").flex().gap_1().children(tab_buttons))
+                    .child(stats_button(entity.clone())),
             )
             .child(
                 div()
@@ -550,6 +582,7 @@ impl Render for MinActionApp {
                     StructDialog::Rename(d) => d.into_any_element(),
                     StructDialog::Delete(d) => d.into_any_element(),
                     StructDialog::Frequency(d) => d.into_any_element(),
+                    StructDialog::Stats(d) => d.into_any_element(),
                 };
                 this.child(modal_overlay(child))
             })
@@ -584,6 +617,25 @@ fn struct_action(
         .hover(|this| this.text_color(rgb(0xcc_cc_cc)))
         .child(label)
         .on_click(handler)
+}
+
+/// 工具栏「统计」入口：打开复习统计对话框（顺带为 T015 工具栏铺底）。
+fn stats_button(app: Entity<MinActionApp>) -> impl IntoElement {
+    div()
+        .id("open-stats")
+        .px_2()
+        .py_1()
+        .cursor_pointer()
+        .rounded_md()
+        .text_size(px(12.))
+        .child("统计")
+        .on_click(move |_ev, window, cx| {
+            app.update(cx, |root, cx| {
+                let app_entity = cx.entity().clone();
+                root.open_stats(app_entity, window, cx);
+                cx.notify();
+            });
+        })
 }
 
 /// 打开重命名对话框：构造对话框实体并挂到根视图。
