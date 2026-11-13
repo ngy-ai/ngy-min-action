@@ -22,6 +22,7 @@ mod frequency_dialog;
 mod rename_dialog;
 mod rich_content;
 mod stats_dialog;
+mod storage_dialog;
 mod task_editor;
 
 /// 主窗口标题。
@@ -54,6 +55,8 @@ pub(crate) enum StructDialog {
     Frequency(Entity<frequency_dialog::FrequencyDialog>),
     /// 复习统计展示。
     Stats(Entity<stats_dialog::StatsDialog>),
+    /// 存储目录与占用展示。
+    Storage(Entity<storage_dialog::StorageDialog>),
 }
 
 /// 中央区页签。
@@ -231,6 +234,21 @@ impl MinActionApp {
         let dialog = cx.new(|_c| stats_dialog::StatsDialog::new(stats, root.clone()));
         root.update(cx, |this, cx| {
             this.dialog = Some(StructDialog::Stats(dialog));
+            cx.notify();
+        });
+    }
+
+    /// 打开存储对话框：从数据目录递归算出占用后构造对话框挂在根视图。
+    pub(crate) fn open_storage(
+        &mut self,
+        root: Entity<MinActionApp>,
+        _window: &mut Window,
+        cx: &mut App,
+    ) {
+        let info = storage_dialog::collect_storage(self.store.data_dir());
+        let dialog = cx.new(|_c| storage_dialog::StorageDialog::new(info, root.clone()));
+        root.update(cx, |this, cx| {
+            this.dialog = Some(StructDialog::Storage(dialog));
             cx.notify();
         });
     }
@@ -488,7 +506,13 @@ impl MinActionApp {
                     .justify_between()
                     .px_2()
                     .child(div().id("tabs-row").flex().gap_1().children(tab_buttons))
-                    .child(stats_button(entity.clone())),
+                    .child(
+                        div()
+                            .flex()
+                            .gap_2()
+                            .child(stats_button(entity.clone()))
+                            .child(storage_button(entity.clone())),
+                    ),
             )
             .child(
                 div()
@@ -583,6 +607,7 @@ impl Render for MinActionApp {
                     StructDialog::Delete(d) => d.into_any_element(),
                     StructDialog::Frequency(d) => d.into_any_element(),
                     StructDialog::Stats(d) => d.into_any_element(),
+                    StructDialog::Storage(d) => d.into_any_element(),
                 };
                 this.child(modal_overlay(child))
             })
@@ -633,6 +658,25 @@ fn stats_button(app: Entity<MinActionApp>) -> impl IntoElement {
             app.update(cx, |root, cx| {
                 let app_entity = cx.entity().clone();
                 root.open_stats(app_entity, window, cx);
+                cx.notify();
+            });
+        })
+}
+
+/// 工具栏「存储」入口：打开存储对话框（顺带为 T015 工具栏铺底）。
+fn storage_button(app: Entity<MinActionApp>) -> impl IntoElement {
+    div()
+        .id("open-storage")
+        .px_2()
+        .py_1()
+        .cursor_pointer()
+        .rounded_md()
+        .text_size(px(12.))
+        .child("存储")
+        .on_click(move |_ev, window, cx| {
+            app.update(cx, |root, cx| {
+                let app_entity = cx.entity().clone();
+                root.open_storage(app_entity, window, cx);
                 cx.notify();
             });
         })
