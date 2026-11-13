@@ -26,14 +26,14 @@
 - [ ] T007 结构树（左栏）：目标/分类树 + 类别计数，选中回调刷新（对应 014 计数需求）
 - [ ] T008 三页签容器：任务 / 今日待办 / 历史待办 切换（对应 014 三页签）
 - [x] T009 今日页（TDD）：最小行动列表（scheduler `generate_day` 幂等生成，复用 `actions_on`/`daily_cap`）、
-      完成/跳过/撤销（复用 `settle_action`/`undo_last_settlement`）；备注入口（左右两栏）留待 T012
+      完成/跳过/撤销（复用 `settle_action`/`undo_last_settlement`）；备注两栏已落地（T012）
 - [ ] T010 历史页：历史行动分页加载与结算（对应 012）
 
 ## Phase 3：任务内容与备注两栏（TDD）
 
 - [x] T011 任务内容对话框：点击任务打开，编辑名称 / 预计耗时(分钟) / 富文本内容，频率只读；媒体以 `Attachment` 卡片展示并支持增删（添加经 `rfd` 选文件拷入 `task_content/<task_id>/` 后写库，删除删库记录并清磁盘文件）；保存写回 Store 后 reload 并关闭
-- [ ] T012 备注两栏：来源任务（标题+富内容）/ 当前备注（对应 013）
-      —— 依赖「备注/来源任务」数据模型与今日行动页（T009），推迟到 T009 之后
+- [x] T012 备注两栏（TDD）：今日行动行「备注」按钮打开左右两栏对话框（左=来源任务标题+描述，右=当前备注文本域），
+      保存经 `Store::set_action_note` 写库（空白规范为清除），非法内容经 `format_note_error` 给出可读错误且不关闭；零数据层改动
 - [x] T013 富内容渲染：链接可点击（解析 markdown/bare 链接，点击 `cx.open_url` 打开系统浏览器）；已有媒体以 `Attachment` 卡片渲染——图片内联预览、音频/视频「打开」按钮（路径经 `Store::data_dir()/task_content/<task_id>/<file_name>` 构造 `file://` URI 打开）
       —— 媒体增删（T011b）已完成：增删核心逻辑抽成 `add_media_file`/`remove_media_file` 自由函数（写库 + 拷/删磁盘文件），未改动 `Store` 对外 API（符合数据层零改动）
 

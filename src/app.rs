@@ -22,6 +22,7 @@ use crate::store::Store;
 
 mod delete_dialog;
 mod frequency_dialog;
+mod note_dialog;
 mod rename_dialog;
 mod rich_content;
 mod stats_dialog;
@@ -61,6 +62,8 @@ pub(crate) enum StructDialog {
     Stats(Entity<stats_dialog::StatsDialog>),
     /// 存储目录与占用展示。
     Storage(Entity<storage_dialog::StorageDialog>),
+    /// 行动备注（左右两栏：来源任务 / 当前备注）。
+    Note(Entity<note_dialog::NoteDialog>),
 }
 
 /// 中央区页签。
@@ -284,6 +287,31 @@ impl MinActionApp {
         let dialog = cx.new(|_c| storage_dialog::StorageDialog::new(info, root.clone()));
         root.update(cx, |this, cx| {
             this.dialog = Some(StructDialog::Storage(dialog));
+            cx.notify();
+        });
+    }
+
+    /// 打开行动备注对话框：用来源任务上下文与既有备注构造两栏对话框挂在根视图。
+    pub(crate) fn open_note_dialog(
+        &mut self,
+        root: Entity<MinActionApp>,
+        action_id: ActionId,
+        context: note_dialog::NoteContext,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        let dialog = cx.new(|c| {
+            note_dialog::NoteDialog::new(
+                context,
+                action_id,
+                self.store.clone(),
+                root.clone(),
+                window,
+                c,
+            )
+        });
+        root.update(cx, |this, cx| {
+            this.dialog = Some(StructDialog::Note(dialog));
             cx.notify();
         });
     }
@@ -643,6 +671,7 @@ impl Render for MinActionApp {
                     StructDialog::Frequency(d) => d.into_any_element(),
                     StructDialog::Stats(d) => d.into_any_element(),
                     StructDialog::Storage(d) => d.into_any_element(),
+                    StructDialog::Note(d) => d.into_any_element(),
                 };
                 this.child(modal_overlay(child))
             })
