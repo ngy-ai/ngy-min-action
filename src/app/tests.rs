@@ -8,7 +8,7 @@ use std::sync::Arc;
 use crate::app::{MinActionApp, TodoTab};
 use crate::clock::SystemClock;
 use crate::config::Bootstrap;
-use crate::model::{Frequency, TaskDraft};
+use crate::model::{ActionStatus, Frequency, TaskDraft};
 use crate::store::Store;
 
 /// 在临时目录打开一个空库，便于测试构造数据。
@@ -129,4 +129,98 @@ fn category_deletion_impact_counts_tasks() {
     let impact = app.category_deletion_impact(cat);
     assert_eq!(impact.categories, 0, "分类删除不影响其他分类");
     assert_eq!(impact.tasks, 1, "应波及 1 条任务");
+}
+
+/// 切换/载入今日页应生成当天「最小行动」列表（默认每日上限 5）。
+#[test]
+fn today_tab_generates_actions_for_active_tasks() {
+    let (dir, store) = open_temp_store("today-gen");
+    let goal = store.create_goal("AI", None).expect("目标");
+    let cat = store.create_category(goal, "口语").expect("分类");
+    let draft = TaskDraft {
+        name: "朗读课文".to_owned(),
+        frequency: Frequency::Daily,
+        estimated_minutes: None,
+        description: None,
+    };
+    store.create_task(cat, draft).expect("任务");
+    let bootstrap = Bootstrap::new(&dir);
+    let (_tx, rx) = std::sync::mpsc::channel();
+    let app = MinActionApp::new(store, Arc::new(SystemClock), rx, bootstrap).expect("构造根视图");
+
+    assert_eq!(app.today_actions.len(), 1, "应生成 1 条当日行动");
+    assert_eq!(
+        app.today_actions[0].status,
+        ActionStatus::Pending,
+        "新生成行动应为待完成"
+    );
+}
+
+/// 完成一条今日行动应记为 Done，并可撤销回 Pending。
+#[test]
+fn today_settle_and_undo() {
+    let (dir, store) = open_temp_store("today-settle");
+    let goal = store.create_goal("AI", None).expect("目标");
+    let cat = store.create_category(goal, "口语").expect("分类");
+    let draft = TaskDraft {
+        name: "朗读课文".to_owned(),
+        frequency: Frequency::Daily,
+        estimated_minutes: None,
+        description: None,
+    };
+    store.create_task(cat, draft).expect("任务");
+    let bootstrap = Bootstrap::new(&dir);
+    let (_tx, rx) = std::sync::mpsc::channel();
+    let mut app =
+        MinActionApp::new(store, Arc::new(SystemClock), rx, bootstrap).expect("构造根视图");
+
+    let action_id = app.today_actions[0].id;
+    app.settle_today_action(action_id, ActionStatus::Done)
+        .expect("结算应成功");
+    assert_eq!(
+        app.today_actions[0].status,
+        ActionStatus::Done,
+        "应记为完成"
+    );
+
+    app.undo_today_action(action_id).expect("撤销应成功");
+    assert_eq!(
+        app.today_actions[0].status,
+        ActionStatus::Pending,
+        "撤销后应回到待完成"
+    );
+}
+
+/// 跳过一条今日行动应记为 Skipped，且可撤销回 Pending。
+#[test]
+fn today_skip_and_undo() {
+    let (dir, store) = open_temp_store("today-skip");
+    let goal = store.create_goal("AI", None).expect("目标");
+    let cat = store.create_category(goal, "口语").expect("分类");
+    let draft = TaskDraft {
+        name: "朗读课文".to_owned(),
+        frequency: Frequency::Daily,
+        estimated_minutes: None,
+        description: None,
+    };
+    store.create_task(cat, draft).expect("任务");
+    let bootstrap = Bootstrap::new(&dir);
+    let (_tx, rx) = std::sync::mpsc::channel();
+    let mut app =
+        MinActionApp::new(store, Arc::new(SystemClock), rx, bootstrap).expect("构造根视图");
+
+    let action_id = app.today_actions[0].id;
+    app.settle_today_action(action_id, ActionStatus::Skipped)
+        .expect("跳过应成功");
+    assert_eq!(
+        app.today_actions[0].status,
+        ActionStatus::Skipped,
+        "应记为跳过"
+    );
+    app.undo_today_action(action_id).expect("撤销应成功");
+    assert_eq!(
+        app.today_actions[0].status,
+        ActionStatus::Pending,
+        "撤销后应回到待完成"
+    );
 }

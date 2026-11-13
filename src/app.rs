@@ -14,7 +14,10 @@ use gpui_kit::*;
 
 use crate::clock::Clock;
 use crate::config::Bootstrap;
-use crate::model::{Category, CategoryId, DeletionImpact, Frequency, Goal, GoalId, Task, TaskId};
+use crate::model::{
+    Action, ActionId, ActionStatus, Category, CategoryId, DeletionImpact, Frequency, Goal, GoalId,
+    Task, TaskId,
+};
 use crate::store::Store;
 
 mod delete_dialog;
@@ -24,6 +27,7 @@ mod rich_content;
 mod stats_dialog;
 mod storage_dialog;
 mod task_editor;
+mod today_view;
 
 /// 主窗口标题。
 pub const WINDOW_TITLE: &str = "最小行动";
@@ -110,8 +114,10 @@ pub struct MinActionApp {
     pub(crate) tab: TodoTab,
     /// 当前打开的任务内容编辑器；`None` 表示未打开。
     pub(crate) editing: Option<Entity<task_editor::TaskEditor>>,
-    /// 当前打开的结构树对话框（重命名/删除）；`None` 表示未打开。
+    /// 当前打开的结构树对话框（重命名/删除/频率/统计/存储）；`None` 表示未打开。
     pub(crate) dialog: Option<StructDialog>,
+    /// 今日行动列表（含已结算与顺延），供今日页渲染与完成/跳过/撤销。
+    pub(crate) today_actions: Vec<Action>,
 }
 
 impl MinActionApp {
@@ -137,6 +143,7 @@ impl MinActionApp {
             tab: TodoTab::Tasks,
             editing: None,
             dialog: None,
+            today_actions: Vec::new(),
         };
         app.reload()?;
         Ok(app)
@@ -159,6 +166,34 @@ impl MinActionApp {
                 .find(|category| Some(category.goal_id) == self.selected_goal)
                 .map(|category| category.id);
         }
+        self.reload_today()?;
+        Ok(())
+    }
+
+    /// 生成（幂等）并载入今日行动列表，覆盖 `today_actions`。
+    pub(crate) fn reload_today(&mut self) -> Result<()> {
+        let today = self.clock.today();
+        let cap = self.store.daily_cap()?;
+        self.store.generate_day(today, cap)?;
+        self.today_actions = self.store.actions_on(today)?;
+        Ok(())
+    }
+
+    /// 结算一条今日行动（完成/跳过），随后刷新今日列表。
+    pub(crate) fn settle_today_action(
+        &mut self,
+        action_id: ActionId,
+        next: ActionStatus,
+    ) -> Result<()> {
+        self.store.settle_action(action_id, next)?;
+        self.reload_today()?;
+        Ok(())
+    }
+
+    /// 撤销一条今日行动最近一次结算，随后刷新今日列表。
+    pub(crate) fn undo_today_action(&mut self, action_id: ActionId) -> Result<()> {
+        self.store.undo_last_settlement(action_id)?;
+        self.reload_today()?;
         Ok(())
     }
 
@@ -576,7 +611,7 @@ impl MinActionApp {
                             })
                     }))
             }
-            TodoTab::Today => div().child("今日待办（迁移中，Phase 2 后续填充）"),
+            TodoTab::Today => div().child(today_view::render(entity.clone(), self)),
             TodoTab::History => div().child("历史待办（迁移中，Phase 2 后续填充）"),
         }
     }
