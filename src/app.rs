@@ -8,14 +8,17 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use anyhow::Result;
+use gpui::{AnyElement, App, ClickEvent, Window};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 
 use crate::clock::Clock;
 use crate::config::Bootstrap;
-use crate::model::{Category, CategoryId, Goal, GoalId, Task, TaskId};
+use crate::model::{Category, CategoryId, DeletionImpact, Goal, GoalId, Task, TaskId};
 use crate::store::Store;
 
+mod delete_dialog;
+mod rename_dialog;
 mod rich_content;
 mod task_editor;
 
@@ -27,6 +30,24 @@ pub const WINDOW_TITLE: &str = "最小行动";
 pub enum TickEvent {
     /// 定时心跳。
     Tick,
+}
+
+/// 结构树中被重命名/删除的对象：目标或分类。
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum StructTarget {
+    /// 目标。
+    Goal(GoalId),
+    /// 分类。
+    Category(CategoryId),
+}
+
+/// 当前打开的结构树对话框（重命名/删除），与任务内容编辑器互斥显示。
+#[derive(Clone)]
+pub(crate) enum StructDialog {
+    /// 重命名目标或分类。
+    Rename(Entity<rename_dialog::RenameDialog>),
+    /// 删除确认目标或分类。
+    Delete(Entity<delete_dialog::DeleteDialog>),
 }
 
 /// 中央区页签。
@@ -80,6 +101,8 @@ pub struct MinActionApp {
     pub(crate) tab: TodoTab,
     /// 当前打开的任务内容编辑器；`None` 表示未打开。
     pub(crate) editing: Option<Entity<task_editor::TaskEditor>>,
+    /// 当前打开的结构树对话框（重命名/删除）；`None` 表示未打开。
+    pub(crate) dialog: Option<StructDialog>,
 }
 
 impl MinActionApp {
@@ -104,6 +127,7 @@ impl MinActionApp {
             selected_task: None,
             tab: TodoTab::Tasks,
             editing: None,
+            dialog: None,
         };
         app.reload()?;
         Ok(app)
@@ -157,6 +181,45 @@ impl MinActionApp {
         self.editing = None;
     }
 
+    /// 关闭结构树对话框（重命名/删除）。
+    pub(crate) fn close_dialog(&mut self) {
+        self.dialog = None;
+    }
+
+    /// 删除一个目标将波及的范围（分类数、任务数），用于删除确认文案。
+    pub(crate) fn goal_deletion_impact(&self, goal_id: GoalId) -> DeletionImpact {
+        let cat_ids: Vec<CategoryId> = self
+            .all_categories
+            .iter()
+            .filter(|c| c.goal_id == goal_id)
+            .map(|c| c.id)
+            .collect();
+        let tasks = self
+            .all_tasks
+            .iter()
+            .filter(|t| cat_ids.contains(&t.category_id))
+            .count();
+        DeletionImpact {
+            categories: cat_ids.len(),
+            tasks,
+            pending_actions: 0,
+        }
+    }
+
+    /// 删除一个分类将波及的范围（任务数），用于删除确认文案。
+    pub(crate) fn category_deletion_impact(&self, category_id: CategoryId) -> DeletionImpact {
+        let tasks = self
+            .all_tasks
+            .iter()
+            .filter(|t| t.category_id == category_id)
+            .count();
+        DeletionImpact {
+            categories: 0,
+            tasks,
+            pending_actions: 0,
+        }
+    }
+
     /// 按分类聚合任务数，供结构树展示条数。
     fn recompute_task_counts(&mut self) {
         let mut counts: HashMap<CategoryId, usize> = HashMap::new();
@@ -197,22 +260,66 @@ impl MinActionApp {
                         let count = self.goal_task_count(goal_id);
                         let entity_goal = entity.clone();
                         let entity_cat = entity.clone();
-                        let mut rows = vec![
+                        let rename_entity = entity.clone();
+                        let delete_entity = entity.clone();
+                        let goal_name = goal.name.clone();
+                        let mut rows = vec![{
                             div()
                                 .id(format!("goal-{gi}"))
                                 .px_3()
                                 .py_1()
-                                .cursor_pointer()
                                 .rounded_md()
                                 .when(goal_selected, |this| this.bg(rgb(0x2a_2a_2e)))
+                                .flex()
+                                .items_center()
+                                .justify_between()
                                 .on_click(move |_ev, _window, cx| {
                                     entity_goal.update(cx, |this, cx| {
                                         this.select_goal(goal_id);
                                         cx.notify();
                                     });
                                 })
-                                .child(format!("{}（{}）", goal.name, count)),
-                        ];
+                                .child(
+                                    div()
+                                        .flex_1()
+                                        .cursor_pointer()
+                                        .child(format!("{}（{}）", goal.name, count)),
+                                )
+                                .child(
+                                    div()
+                                        .flex()
+                                        .gap_1()
+                                        .child(struct_action(
+                                            "goal-rename",
+                                            "重命名",
+                                            move |_ev, window, cx| {
+                                                open_rename(
+                                                    rename_entity.clone(),
+                                                    StructTarget::Goal(goal_id),
+                                                    &goal_name,
+                                                    window,
+                                                    cx,
+                                                );
+                                            },
+                                        ))
+                                        .child(struct_action(
+                                            "goal-delete",
+                                            "删除",
+                                            move |_ev, window, cx| {
+                                                let impact = delete_entity
+                                                    .read(cx)
+                                                    .goal_deletion_impact(goal_id);
+                                                open_delete(
+                                                    delete_entity.clone(),
+                                                    StructTarget::Goal(goal_id),
+                                                    impact,
+                                                    window,
+                                                    cx,
+                                                );
+                                            },
+                                        )),
+                                )
+                        }];
                         if goal_selected {
                             for (ci, category) in self
                                 .all_categories
@@ -224,23 +331,67 @@ impl MinActionApp {
                                 let cat_selected = selected_category == Some(category_id);
                                 let cat_count =
                                     self.task_counts.get(&category_id).copied().unwrap_or(0);
-                                let entity_cat_item = entity_cat.clone();
+                                let cat_select = entity_cat.clone();
+                                let cat_rename = entity_cat.clone();
+                                let cat_delete = entity_cat.clone();
+                                let cat_name = category.name.clone();
                                 rows.push(
                                     div()
                                         .id(format!("cat-{gi}-{ci}"))
                                         .px_3()
                                         .pl_6()
                                         .py_1()
-                                        .cursor_pointer()
                                         .rounded_md()
                                         .when(cat_selected, |this| this.bg(rgb(0x2a_2a_2e)))
+                                        .flex()
+                                        .items_center()
+                                        .justify_between()
                                         .on_click(move |_ev, _window, cx| {
-                                            entity_cat_item.update(cx, |this, cx| {
+                                            cat_select.update(cx, |this, cx| {
                                                 this.select_category(category_id);
                                                 cx.notify();
                                             });
                                         })
-                                        .child(format!("{}（{}）", category.name, cat_count)),
+                                        .child(
+                                            div().flex_1().cursor_pointer().child(format!(
+                                                "{}（{}）",
+                                                category.name, cat_count
+                                            )),
+                                        )
+                                        .child(
+                                            div()
+                                                .flex()
+                                                .gap_1()
+                                                .child(struct_action(
+                                                    "cat-rename",
+                                                    "重命名",
+                                                    move |_ev, window, cx| {
+                                                        open_rename(
+                                                            cat_rename.clone(),
+                                                            StructTarget::Category(category_id),
+                                                            &cat_name,
+                                                            window,
+                                                            cx,
+                                                        );
+                                                    },
+                                                ))
+                                                .child(struct_action(
+                                                    "cat-delete",
+                                                    "删除",
+                                                    move |_ev, window, cx| {
+                                                        let impact = cat_delete
+                                                            .read(cx)
+                                                            .category_deletion_impact(category_id);
+                                                        open_delete(
+                                                            cat_delete.clone(),
+                                                            StructTarget::Category(category_id),
+                                                            impact,
+                                                            window,
+                                                            cx,
+                                                        );
+                                                    },
+                                                )),
+                                        ),
                                 );
                             }
                         }
@@ -371,16 +522,79 @@ impl Render for MinActionApp {
             .child(self.render_structure(entity.clone()))
             .child(self.render_main(entity.clone()))
             .when_some(self.editing.clone(), |this, editing| {
-                this.child(
-                    div()
-                        .absolute()
-                        .inset_0()
-                        .bg(rgb(0x00_00_00).opacity(0.5))
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .child(div().bg(rgb(0x20_20_24)).rounded_lg().child(editing)),
-                )
+                this.child(modal_overlay(editing))
+            })
+            .when_some(self.dialog.clone(), |this, dialog| {
+                let child: AnyElement = match dialog {
+                    StructDialog::Rename(d) => d.into_any_element(),
+                    StructDialog::Delete(d) => d.into_any_element(),
+                };
+                this.child(modal_overlay(child))
             })
     }
+}
+
+/// 居中的模态遮罩：半透明底色 + 中央卡片容器，包裹任意对话框内容。
+fn modal_overlay(child: impl IntoElement) -> impl IntoElement {
+    div()
+        .absolute()
+        .inset_0()
+        .bg(rgb(0x00_00_00).opacity(0.5))
+        .flex()
+        .items_center()
+        .justify_center()
+        .child(div().bg(rgb(0x20_20_24)).rounded_lg().child(child))
+}
+
+/// 结构树每行右侧的小操作按钮（重命名/删除）。
+fn struct_action(
+    id: &'static str,
+    label: &'static str,
+    handler: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+) -> impl IntoElement {
+    div()
+        .id(id)
+        .px_1()
+        .py_0()
+        .cursor_pointer()
+        .text_size(px(11.))
+        .text_color(rgb(0x99_99_99))
+        .hover(|this| this.text_color(rgb(0xcc_cc_cc)))
+        .child(label)
+        .on_click(handler)
+}
+
+/// 打开重命名对话框：构造对话框实体并挂到根视图。
+fn open_rename(
+    root: Entity<MinActionApp>,
+    target: StructTarget,
+    current_name: &str,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    let store = root.read(cx).store.clone();
+    let dialog = cx.new(|c| {
+        rename_dialog::RenameDialog::new(target, current_name, store, root.clone(), window, c)
+    });
+    root.update(cx, |this, cx| {
+        this.dialog = Some(StructDialog::Rename(dialog));
+        cx.notify();
+    });
+}
+
+/// 打开删除确认对话框：先算影响范围，再构造对话框实体并挂到根视图。
+fn open_delete(
+    root: Entity<MinActionApp>,
+    target: StructTarget,
+    impact: DeletionImpact,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    let store = root.read(cx).store.clone();
+    let dialog = cx
+        .new(|c| delete_dialog::DeleteDialog::new(target, impact, store, root.clone(), window, c));
+    root.update(cx, |this, cx| {
+        this.dialog = Some(StructDialog::Delete(dialog));
+        cx.notify();
+    });
 }
