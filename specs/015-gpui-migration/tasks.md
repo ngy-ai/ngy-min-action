@@ -50,7 +50,7 @@
       复用 `Store::review_stats` 展示窗口分项/完成率/连续天数/任务阶段分布，零数据层改动
 - [x] T014 存储对话框迁移（TDD）：工具栏「存储」入口（tab-bar 右侧，顺带为 T015 铺底）打开只读面板，
       复用 `Store::data_dir` 并递归累加文件字节数展示数据目录与占用（人类可读），零数据层改动
-- [ ] T015 工具栏（每日上限/主题/统计入口）、菜单栏、状态栏迁移（主题映射 kit API）
+- [x] T015 工具栏/菜单栏/状态栏（TDD）：工具栏含每日上限步进（`set_daily_cap`，越界拒 `InvalidValue`）、主题切换（System/Light/Dark，持久化 `set_theme_choice` 并经 `Theme::change`/系统外观应用）、统计/存储入口；菜单栏（标题）、状态栏（上限/主题/今日进度/历史条数）；零数据层改动
 - [ ] T016 把现有 `egui::Context` headless 测试（`src/app/tests/*`）改写为 gpui-kit 测试并转绿，
       删除全部 egui 专属测试代码
 
