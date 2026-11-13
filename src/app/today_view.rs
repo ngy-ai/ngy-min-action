@@ -78,7 +78,7 @@ fn action_row(entity: Entity<MinActionApp>, action: Action, name: String) -> imp
 }
 
 /// 把行动状态映射成中文标签。
-fn status_text(status: ActionStatus) -> &'static str {
+pub(crate) fn status_text(status: ActionStatus) -> &'static str {
     match status {
         ActionStatus::Pending => "待完成",
         ActionStatus::Done => "已完成",

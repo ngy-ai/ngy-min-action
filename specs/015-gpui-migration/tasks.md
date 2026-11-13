@@ -27,7 +27,7 @@
 - [ ] T008 三页签容器：任务 / 今日待办 / 历史待办 切换（对应 014 三页签）
 - [x] T009 今日页（TDD）：最小行动列表（scheduler `generate_day` 幂等生成，复用 `actions_on`/`daily_cap`）、
       完成/跳过/撤销（复用 `settle_action`/`undo_last_settlement`）；备注两栏已落地（T012）
-- [ ] T010 历史页：历史行动分页加载与结算（对应 012）
+- [x] T010 历史页（TDD）：分页加载历史行动（`actions_page` 首页 + 加载更多，复用 `HISTORY_PAGE_SIZE`），完成/跳过/撤销（复用 `settle_action`/`undo_last_settlement`，结算后就地更新内存保留分页）；按日期倒序展示任务名+日期；零数据层改动
 
 ## Phase 3：任务内容与备注两栏（TDD）
 
