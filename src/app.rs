@@ -14,10 +14,11 @@ use gpui_kit::*;
 
 use crate::clock::Clock;
 use crate::config::Bootstrap;
-use crate::model::{Category, CategoryId, DeletionImpact, Goal, GoalId, Task, TaskId};
+use crate::model::{Category, CategoryId, DeletionImpact, Frequency, Goal, GoalId, Task, TaskId};
 use crate::store::Store;
 
 mod delete_dialog;
+mod frequency_dialog;
 mod rename_dialog;
 mod rich_content;
 mod task_editor;
@@ -41,13 +42,15 @@ pub(crate) enum StructTarget {
     Category(CategoryId),
 }
 
-/// 当前打开的结构树对话框（重命名/删除），与任务内容编辑器互斥显示。
+/// 当前打开的结构树对话框（重命名/删除/频率），与任务内容编辑器可叠加显示。
 #[derive(Clone)]
 pub(crate) enum StructDialog {
     /// 重命名目标或分类。
     Rename(Entity<rename_dialog::RenameDialog>),
     /// 删除确认目标或分类。
     Delete(Entity<delete_dialog::DeleteDialog>),
+    /// 编辑任务频率。
+    Frequency(Entity<frequency_dialog::FrequencyDialog>),
 }
 
 /// 中央区页签。
@@ -181,9 +184,27 @@ impl MinActionApp {
         self.editing = None;
     }
 
-    /// 关闭结构树对话框（重命名/删除）。
+    /// 关闭结构树对话框（重命名/删除/频率）。
     pub(crate) fn close_dialog(&mut self) {
         self.dialog = None;
+    }
+
+    /// 打开频率编辑对话框：依据当前频率预选种类，构造对话框实体并挂到根视图。
+    pub(crate) fn open_frequency_dialog(
+        &mut self,
+        root: Entity<MinActionApp>,
+        editor: Entity<task_editor::TaskEditor>,
+        current: Frequency,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        let dialog = cx.new(|c| {
+            frequency_dialog::FrequencyDialog::new(editor, root.clone(), current, window, c)
+        });
+        root.update(cx, |this, cx| {
+            this.dialog = Some(StructDialog::Frequency(dialog));
+            cx.notify();
+        });
     }
 
     /// 删除一个目标将波及的范围（分类数、任务数），用于删除确认文案。
@@ -528,6 +549,7 @@ impl Render for MinActionApp {
                 let child: AnyElement = match dialog {
                     StructDialog::Rename(d) => d.into_any_element(),
                     StructDialog::Delete(d) => d.into_any_element(),
+                    StructDialog::Frequency(d) => d.into_any_element(),
                 };
                 this.child(modal_overlay(child))
             })

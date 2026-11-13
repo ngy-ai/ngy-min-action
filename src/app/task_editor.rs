@@ -67,6 +67,12 @@ impl TaskEditor {
             media,
         }
     }
+
+    /// 由频率对话框回写新的生成频率（保存时再统一写库）。
+    pub(crate) fn set_frequency(&mut self, frequency: Frequency, cx: &mut Context<Self>) {
+        self.frequency = frequency;
+        cx.notify();
+    }
 }
 
 impl Render for TaskEditor {
@@ -110,7 +116,31 @@ impl Render for TaskEditor {
                         .child(render_rich_text(&desc_preview)),
                 )
             })
-            .child(div().child(format!("频率：{frequency_label}")))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .child(div().child(format!("频率：{frequency_label}")))
+                    .child(Button::new("edit-frequency").label("编辑").on_click({
+                        let root = root.clone();
+                        let entity = entity.clone();
+                        let current = self.frequency;
+                        move |_ev, window, cx| {
+                            root.update(cx, |root, cx| {
+                                let app_entity = cx.entity().clone();
+                                root.open_frequency_dialog(
+                                    app_entity,
+                                    entity.clone(),
+                                    current,
+                                    window,
+                                    cx,
+                                );
+                                cx.notify();
+                            });
+                        }
+                    })),
+            )
             .child(media_block(&media, &media_dir, entity))
             .child(
                 div()
@@ -119,7 +149,13 @@ impl Render for TaskEditor {
                     .justify_end()
                     .child(cancel_button(root.clone()))
                     .child(save_button(
-                        task_id, name_state, est_state, desc_state, store, root,
+                        task_id,
+                        name_state,
+                        est_state,
+                        desc_state,
+                        store,
+                        root,
+                        self.frequency,
                     )),
             )
     }
@@ -337,6 +373,7 @@ fn save_button(
     desc_state: Entity<TextareaState>,
     store: Arc<Store>,
     root: Entity<MinActionApp>,
+    frequency: Frequency,
 ) -> impl IntoElement {
     div()
         .id("editor-save")
@@ -350,7 +387,7 @@ fn save_button(
             let name = name_state.read(cx).value().trim().to_string();
             let description = desc_state.read(cx).value().trim().to_string();
             let estimated = est_state.read(cx).value().trim().parse::<u16>().ok();
-            let _ = apply_edits(&store, task_id, &name, &description, estimated);
+            let _ = apply_edits(&store, task_id, &name, &description, estimated, frequency);
             root.update(cx, |root, cx| {
                 let _ = root.reload();
                 root.close_editor();
@@ -359,7 +396,7 @@ fn save_button(
         })
 }
 
-/// 把任务编辑结果写回 `Store`：重命名、设内容、设预计耗时。
+/// 把任务编辑结果写回 `Store`：重命名、设内容、设预计耗时、设频率。
 ///
 /// 抽成自由函数，便于在无 GPU 的单元/集成测试中直接验证写回逻辑。
 pub(crate) fn apply_edits(
@@ -368,10 +405,12 @@ pub(crate) fn apply_edits(
     name: &str,
     description: &str,
     estimated_minutes: Option<u16>,
+    frequency: Frequency,
 ) -> anyhow::Result<()> {
     store.rename_task(task_id, name)?;
     store.set_task_description(task_id, description)?;
     store.update_task_estimated_minutes(task_id, estimated_minutes)?;
+    store.update_task_frequency(task_id, frequency)?;
     Ok(())
 }
 
