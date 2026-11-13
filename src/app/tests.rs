@@ -5,6 +5,8 @@
 
 use std::sync::Arc;
 
+use chrono::NaiveDate;
+
 use crate::app::{MinActionApp, TodoTab};
 use crate::clock::SystemClock;
 use crate::config::Bootstrap;
@@ -223,4 +225,127 @@ fn today_skip_and_undo() {
         ActionStatus::Pending,
         "撤销后应回到待完成"
     );
+}
+
+/// 初始化应载入历史待办首页（过去日期的行动），且不含今日行动。
+#[test]
+fn history_first_page_loads_past_actions() {
+    let (dir, store) = open_temp_store("hist-1");
+    let goal = store.create_goal("AI", None).expect("目标");
+    let cat = store.create_category(goal, "口语").expect("分类");
+    let draft = TaskDraft {
+        name: "朗读课文".to_owned(),
+        frequency: Frequency::Daily,
+        estimated_minutes: None,
+        description: None,
+    };
+    store.create_task(cat, draft).expect("任务");
+
+    let past = NaiveDate::from_ymd_opt(2020, 1, 1).unwrap();
+    store.generate_day(past, 5).expect("生成过去一天的行动");
+
+    let bootstrap = Bootstrap::new(&dir);
+    let (_tx, rx) = std::sync::mpsc::channel();
+    let app = MinActionApp::new(store, Arc::new(SystemClock), rx, bootstrap).expect("构造根视图");
+
+    assert_eq!(app.history_actions.len(), 1, "应载入 1 条历史行动");
+    assert_eq!(app.history_actions[0].on_date, past, "行动日期应为过去日期");
+    assert!(!app.history_has_more, "单条不应有更多页");
+}
+
+/// 结算一条历史行动应记为 Done，并写回数据层。
+#[test]
+fn history_settle_updates_status() {
+    let (dir, store) = open_temp_store("hist-settle");
+    let goal = store.create_goal("AI", None).expect("目标");
+    let cat = store.create_category(goal, "口语").expect("分类");
+    let draft = TaskDraft {
+        name: "朗读课文".to_owned(),
+        frequency: Frequency::Daily,
+        estimated_minutes: None,
+        description: None,
+    };
+    store.create_task(cat, draft).expect("任务");
+    let past = NaiveDate::from_ymd_opt(2020, 1, 1).unwrap();
+    store.generate_day(past, 5).expect("生成过去一天的行动");
+
+    let bootstrap = Bootstrap::new(&dir);
+    let (_tx, rx) = std::sync::mpsc::channel();
+    let mut app =
+        MinActionApp::new(store.clone(), Arc::new(SystemClock), rx, bootstrap).expect("构造根视图");
+
+    let action_id = app.history_actions[0].id;
+    app.settle_history_action(action_id, ActionStatus::Done)
+        .expect("结算应成功");
+    assert_eq!(
+        app.history_actions[0].status,
+        ActionStatus::Done,
+        "内存状态应记为完成"
+    );
+
+    let stored = store.actions_on(past).expect("读回过去行动");
+    assert!(
+        stored
+            .iter()
+            .any(|a| a.id == action_id && a.status == ActionStatus::Done),
+        "数据层应记为完成"
+    );
+}
+
+/// 撤销一条历史行动最近一次结算，应回到待完成。
+#[test]
+fn history_undo_reverts() {
+    let (dir, store) = open_temp_store("hist-undo");
+    let goal = store.create_goal("AI", None).expect("目标");
+    let cat = store.create_category(goal, "口语").expect("分类");
+    let draft = TaskDraft {
+        name: "朗读课文".to_owned(),
+        frequency: Frequency::Daily,
+        estimated_minutes: None,
+        description: None,
+    };
+    store.create_task(cat, draft).expect("任务");
+    let past = NaiveDate::from_ymd_opt(2020, 1, 1).unwrap();
+    store.generate_day(past, 5).expect("生成过去一天的行动");
+
+    let bootstrap = Bootstrap::new(&dir);
+    let (_tx, rx) = std::sync::mpsc::channel();
+    let mut app =
+        MinActionApp::new(store, Arc::new(SystemClock), rx, bootstrap).expect("构造根视图");
+
+    let action_id = app.history_actions[0].id;
+    app.settle_history_action(action_id, ActionStatus::Skipped)
+        .expect("跳过应成功");
+    app.undo_history_action(action_id).expect("撤销应成功");
+    assert_eq!(
+        app.history_actions[0].status,
+        ActionStatus::Pending,
+        "撤销后应回到待完成"
+    );
+}
+
+/// 已无更多页时，加载更多应是空操作（不重复追加、不报错）。
+#[test]
+fn history_load_more_noop_when_exhausted() {
+    let (dir, store) = open_temp_store("hist-more");
+    let goal = store.create_goal("AI", None).expect("目标");
+    let cat = store.create_category(goal, "口语").expect("分类");
+    let draft = TaskDraft {
+        name: "朗读课文".to_owned(),
+        frequency: Frequency::Daily,
+        estimated_minutes: None,
+        description: None,
+    };
+    store.create_task(cat, draft).expect("任务");
+    let past = NaiveDate::from_ymd_opt(2020, 1, 1).unwrap();
+    store.generate_day(past, 5).expect("生成过去一天的行动");
+
+    let bootstrap = Bootstrap::new(&dir);
+    let (_tx, rx) = std::sync::mpsc::channel();
+    let mut app =
+        MinActionApp::new(store, Arc::new(SystemClock), rx, bootstrap).expect("构造根视图");
+
+    let before = app.history_actions.len();
+    app.load_history_more().expect("加载更多应成功");
+    assert_eq!(app.history_actions.len(), before, "无更多页时不应追加");
 }
