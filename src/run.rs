@@ -11,7 +11,7 @@ use tracing::{info, warn};
 
 use gpui_kit::{AppContext, WindowOptions};
 
-use ngy_min_action::app::{MinActionApp, TickEvent, WINDOW_TITLE};
+use ngy_min_action::app::{MinActionApp, TickEvent, WINDOW_TITLE, apply_theme_choice};
 use ngy_min_action::clock::{Clock, SystemClock};
 use ngy_min_action::common::{TICK_INTERVAL_SECS, elapsed_ms};
 use ngy_min_action::config::Bootstrap;
@@ -52,10 +52,12 @@ pub(crate) fn run() -> Result<()> {
         "界面已就绪"
     );
 
+    let theme = app.initial_theme();
     gpui_kit::application().run(move |cx| {
         gpui_kit::init(cx);
         gpui_kit::open_window(WindowOptions::default(), cx, |window, cx| {
             window.set_window_title(WINDOW_TITLE);
+            apply_theme_choice(theme, window, cx);
             cx.new(|_| app)
         })
         .expect("打开主窗口失败");

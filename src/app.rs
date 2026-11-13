@@ -14,13 +14,14 @@ use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 
 use crate::clock::Clock;
-use crate::common::HISTORY_PAGE_SIZE;
+use crate::common::{DAILY_CAP_DEFAULT, DAILY_CAP_MAX, DAILY_CAP_MIN, HISTORY_PAGE_SIZE};
 use crate::config::Bootstrap;
 use crate::model::{
     Action, ActionId, ActionStatus, Category, CategoryId, DeletionImpact, Frequency, Goal, GoalId,
-    Task, TaskId,
+    Task, TaskId, ThemeChoice,
 };
 use crate::store::Store;
+use gpui_kit::component::theme::{Theme, ThemeMode};
 
 mod delete_dialog;
 mod frequency_dialog;
@@ -130,6 +131,10 @@ pub struct MinActionApp {
     pub(crate) history_cursor: Option<(NaiveDate, i64)>,
     /// 历史是否还有更早的页。
     pub(crate) history_has_more: bool,
+    /// 每日行动上限（从设置读取，供工具栏与状态栏展示）。
+    pub(crate) daily_cap: u8,
+    /// 主题偏好（从设置读取，供工具栏高亮与启动时应用）。
+    pub(crate) theme_choice: ThemeChoice,
 }
 
 impl MinActionApp {
@@ -159,6 +164,8 @@ impl MinActionApp {
             history_actions: Vec::new(),
             history_cursor: None,
             history_has_more: false,
+            daily_cap: DAILY_CAP_DEFAULT,
+            theme_choice: ThemeChoice::System,
         };
         app.reload()?;
         app.load_history_first()?;
@@ -182,6 +189,8 @@ impl MinActionApp {
                 .find(|category| Some(category.goal_id) == self.selected_goal)
                 .map(|category| category.id);
         }
+        self.daily_cap = self.store.daily_cap()?;
+        self.theme_choice = self.store.theme_choice()?;
         self.reload_today()?;
         Ok(())
     }
@@ -257,6 +266,26 @@ impl MinActionApp {
             action.status = ActionStatus::Pending;
         }
         Ok(())
+    }
+
+    /// 设置每日行动上限（写入设置并刷新今日列表），越界返回 `InvalidValue`。
+    pub(crate) fn set_daily_cap(&mut self, cap: u8) -> Result<()> {
+        self.store.set_daily_cap(cap)?;
+        self.daily_cap = self.store.daily_cap()?;
+        self.reload_today()?;
+        Ok(())
+    }
+
+    /// 设置主题偏好（仅持久化；实际的 gpui 主题应用在 `apply_theme_choice`）。
+    pub(crate) fn set_theme(&mut self, choice: ThemeChoice) -> Result<()> {
+        self.store.set_theme_choice(choice)?;
+        self.theme_choice = choice;
+        Ok(())
+    }
+
+    /// 启动阶段读取已保存的主题偏好（无记录则跟随系统）。
+    pub fn initial_theme(&self) -> ThemeChoice {
+        self.store.theme_choice().unwrap_or_default()
     }
 
     /// 切换到指定中央区页签。
@@ -627,14 +656,7 @@ impl MinActionApp {
                     .items_center()
                     .justify_between()
                     .px_2()
-                    .child(div().id("tabs-row").flex().gap_1().children(tab_buttons))
-                    .child(
-                        div()
-                            .flex()
-                            .gap_2()
-                            .child(stats_button(entity.clone()))
-                            .child(storage_button(entity.clone())),
-                    ),
+                    .child(div().id("tabs-row").flex().gap_1().children(tab_buttons)),
             )
             .child(
                 div()
@@ -643,6 +665,117 @@ impl MinActionApp {
                     .p_3()
                     .child(self.render_tab_content(entity.clone())),
             )
+    }
+
+    /// 渲染顶部菜单栏（应用标题 + 迁移版标识）。
+    fn render_menu_bar(&self) -> impl IntoElement {
+        div()
+            .id("menu-bar")
+            .flex()
+            .items_center()
+            .justify_between()
+            .px_2()
+            .py_1()
+            .border_b_1()
+            .bg(rgb(0x1e_1e_22))
+            .child(
+                div()
+                    .font_weight(gpui::FontWeight::BOLD)
+                    .child(WINDOW_TITLE),
+            )
+            .child(
+                div()
+                    .text_size(px(11.))
+                    .text_color(rgb(0x88_88_88))
+                    .child("gpui-kit 迁移版"),
+            )
+    }
+
+    /// 渲染工具栏：每日上限步进、主题切换、统计与存储入口。
+    fn render_toolbar(&self, entity: Entity<MinActionApp>) -> impl IntoElement {
+        let cap = self.daily_cap;
+        let theme = self.theme_choice;
+        div()
+            .id("toolbar")
+            .flex()
+            .items_center()
+            .gap_4()
+            .px_2()
+            .py_1()
+            .border_b_1()
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_1()
+                    .child(div().child("每日上限"))
+                    .child(cap_button(
+                        entity.clone(),
+                        "cap-dec",
+                        "−",
+                        cap.saturating_sub(1).max(DAILY_CAP_MIN),
+                    ))
+                    .child(div().min_w(px(18.)).text_center().child(cap.to_string()))
+                    .child(cap_button(
+                        entity.clone(),
+                        "cap-inc",
+                        "+",
+                        cap.saturating_add(1).min(DAILY_CAP_MAX),
+                    )),
+            )
+            .child(self.theme_selector(entity.clone(), theme))
+            .child(stats_button(entity.clone()))
+            .child(storage_button(entity.clone()))
+    }
+
+    /// 渲染主题切换三段：跟随系统 / 浅色 / 深色，当前偏好高亮。
+    fn theme_selector(
+        &self,
+        entity: Entity<MinActionApp>,
+        current: ThemeChoice,
+    ) -> impl IntoElement {
+        let choices = [
+            (ThemeChoice::System, "跟随系统"),
+            (ThemeChoice::Light, "浅色"),
+            (ThemeChoice::Dark, "深色"),
+        ];
+        div()
+            .flex()
+            .items_center()
+            .gap_1()
+            .child(div().child("主题"))
+            .children(choices.into_iter().map(move |(choice, label)| {
+                theme_button(entity.clone(), choice, label, choice == current)
+            }))
+    }
+
+    /// 渲染底部状态栏：每日上限、主题、今日完成进度、历史条数。
+    fn render_status_bar(&self) -> impl IntoElement {
+        let done = self
+            .today_actions
+            .iter()
+            .filter(|a| a.status.is_settled())
+            .count();
+        let total = self.today_actions.len();
+        let theme_label = match self.theme_choice {
+            ThemeChoice::System => "跟随系统",
+            ThemeChoice::Light => "浅色",
+            ThemeChoice::Dark => "深色",
+        };
+        div()
+            .id("status-bar")
+            .flex()
+            .items_center()
+            .gap_4()
+            .px_2()
+            .py_1()
+            .border_t_1()
+            .text_size(px(11.))
+            .text_color(rgb(0x99_99_99))
+            .child(format!("每日上限 {}", self.daily_cap))
+            .child(format!("主题 {theme_label}"))
+            .child(format!("今日 完成 {done}/{total}"))
+            .child(format!("历史 {}", self.history_actions.len()))
     }
 
     /// 渲染当前页签下的内容（Phase 2 仅任务页有真实数据，其余占位）。
@@ -704,6 +837,16 @@ impl MinActionApp {
     }
 }
 
+/// 把领域层主题偏好映射到 gpui-kit 主题并应用；`System` 跟随当前系统外观。
+pub fn apply_theme_choice(choice: ThemeChoice, window: &mut Window, cx: &mut App) {
+    let mode: ThemeMode = match choice {
+        ThemeChoice::Light => ThemeMode::Light,
+        ThemeChoice::Dark => ThemeMode::Dark,
+        ThemeChoice::System => cx.window_appearance().into(),
+    };
+    Theme::change(mode, Some(window), cx);
+}
+
 #[cfg(test)]
 mod tests;
 
@@ -718,8 +861,18 @@ impl Render for MinActionApp {
             .size_full()
             .relative()
             .flex()
-            .child(self.render_structure(entity.clone()))
-            .child(self.render_main(entity.clone()))
+            .flex_col()
+            .child(self.render_menu_bar())
+            .child(self.render_toolbar(entity.clone()))
+            .child(
+                div()
+                    .flex()
+                    .flex_1()
+                    .min_h_0()
+                    .child(self.render_structure(entity.clone()))
+                    .child(self.render_main(entity.clone())),
+            )
+            .child(self.render_status_bar())
             .when_some(self.editing.clone(), |this, editing| {
                 this.child(modal_overlay(editing))
             })
@@ -800,6 +953,56 @@ fn storage_button(app: Entity<MinActionApp>) -> impl IntoElement {
             app.update(cx, |root, cx| {
                 let app_entity = cx.entity().clone();
                 root.open_storage(app_entity, window, cx);
+                cx.notify();
+            });
+        })
+}
+
+/// 工具栏「每日上限」步进按钮：点击经 `set_daily_cap` 写库并刷新今日列表。
+fn cap_button(
+    app: Entity<MinActionApp>,
+    id: &'static str,
+    label: &'static str,
+    target: u8,
+) -> impl IntoElement {
+    div()
+        .id(id)
+        .px_2()
+        .py_0()
+        .cursor_pointer()
+        .rounded_md()
+        .bg(rgb(0x2c2c32))
+        .text_size(px(12.))
+        .child(label)
+        .on_click(move |_ev, _window, cx| {
+            app.update(cx, |root, cx| {
+                let _ = root.set_daily_cap(target);
+                cx.notify();
+            });
+        })
+}
+
+/// 工具栏「主题」单选项：点击经 `set_theme` 持久化并立即应用 gpui 主题。
+fn theme_button(
+    app: Entity<MinActionApp>,
+    choice: ThemeChoice,
+    label: &'static str,
+    active: bool,
+) -> impl IntoElement {
+    div()
+        .id(format!("theme-{}", choice.as_str()))
+        .px_2()
+        .py_0()
+        .cursor_pointer()
+        .rounded_md()
+        .when(active, |this| this.bg(rgb(0x3a_3a_42)))
+        .when(!active, |this| this.bg(rgb(0x2c2c32)))
+        .text_size(px(12.))
+        .child(label)
+        .on_click(move |_ev, window, cx| {
+            apply_theme_choice(choice, window, cx);
+            app.update(cx, |root, cx| {
+                let _ = root.set_theme(choice);
                 cx.notify();
             });
         })
