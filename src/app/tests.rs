@@ -10,7 +10,7 @@ use chrono::NaiveDate;
 use crate::app::{MinActionApp, TodoTab};
 use crate::clock::SystemClock;
 use crate::config::Bootstrap;
-use crate::model::{ActionStatus, Frequency, TaskDraft};
+use crate::model::{ActionStatus, Frequency, TaskDraft, ThemeChoice};
 use crate::store::Store;
 
 /// 在临时目录打开一个空库，便于测试构造数据。
@@ -348,4 +348,64 @@ fn history_load_more_noop_when_exhausted() {
     let before = app.history_actions.len();
     app.load_history_more().expect("加载更多应成功");
     assert_eq!(app.history_actions.len(), before, "无更多页时不应追加");
+}
+
+/// 默认主题偏好应为「跟随系统」。
+#[test]
+fn default_theme_is_system() {
+    let (dir, store) = open_temp_store("theme-default");
+    let bootstrap = Bootstrap::new(&dir);
+    let (_tx, rx) = std::sync::mpsc::channel();
+    let app = MinActionApp::new(store, Arc::new(SystemClock), rx, bootstrap).expect("构造根视图");
+    assert_eq!(app.theme_choice, ThemeChoice::System, "无记录时应跟随系统");
+}
+
+/// 设置主题偏好应持久化并可回读。
+#[test]
+fn set_theme_persists() {
+    let (dir, store) = open_temp_store("theme-set");
+    let bootstrap = Bootstrap::new(&dir);
+    let (_tx, rx) = std::sync::mpsc::channel();
+    let mut app =
+        MinActionApp::new(store.clone(), Arc::new(SystemClock), rx, bootstrap).expect("构造根视图");
+
+    app.set_theme(ThemeChoice::Dark).expect("设置主题应成功");
+    assert_eq!(app.theme_choice, ThemeChoice::Dark, "内存状态应更新");
+    assert_eq!(
+        store.theme_choice().expect("读回主题"),
+        ThemeChoice::Dark,
+        "数据层应持久化"
+    );
+
+    app.set_theme(ThemeChoice::Light).expect("设置主题应成功");
+    assert_eq!(store.theme_choice().expect("读回主题"), ThemeChoice::Light);
+}
+
+/// 设置每日上限应持久化并可回读。
+#[test]
+fn set_daily_cap_persists() {
+    let (dir, store) = open_temp_store("cap-set");
+    let bootstrap = Bootstrap::new(&dir);
+    let (_tx, rx) = std::sync::mpsc::channel();
+    let mut app =
+        MinActionApp::new(store.clone(), Arc::new(SystemClock), rx, bootstrap).expect("构造根视图");
+
+    app.set_daily_cap(3).expect("设置上限应成功");
+    assert_eq!(app.daily_cap, 3, "内存状态应更新");
+    assert_eq!(store.daily_cap().expect("读回上限"), 3, "数据层应持久化");
+}
+
+/// 越界的每日上限应被拒绝，且状态保持不变。
+#[test]
+fn set_daily_cap_rejects_out_of_range() {
+    let (dir, store) = open_temp_store("cap-invalid");
+    let bootstrap = Bootstrap::new(&dir);
+    let (_tx, rx) = std::sync::mpsc::channel();
+    let mut app =
+        MinActionApp::new(store, Arc::new(SystemClock), rx, bootstrap).expect("构造根视图");
+    let before = app.daily_cap;
+
+    assert!(app.set_daily_cap(0).is_err(), "0 应越界被拒");
+    assert!(app.set_daily_cap(99).is_err(), "99 应越界被拒");
+    assert_eq!(app.daily_cap, before, "失败后状态不应改变");
 }
