@@ -13,7 +13,6 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg",
 ngy-utils-tracing = "0.7"
 rfd = "0.17"
 rusqlite = { version = "0.41", features = ["backup", "bundled"] }
-tokio = { version = "1.54", features = ["rt-multi-thread", "time", "sync"] }
 tracing = "0.1"
 
 [dev-dependencies]

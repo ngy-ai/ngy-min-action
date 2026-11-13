@@ -3,17 +3,16 @@
 use std::fs::File;
 use std::path::Path;
 use std::sync::Arc;
-use std::sync::mpsc::channel;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use anyhow::{Context, Result};
 use tracing::{info, warn};
 
 use gpui_kit::{AppContext, WindowOptions};
 
-use ngy_min_action::app::{MinActionApp, TickEvent, WINDOW_TITLE, apply_theme_choice};
+use ngy_min_action::app::{MinActionApp, WINDOW_TITLE, apply_theme_choice};
 use ngy_min_action::clock::{Clock, SystemClock};
-use ngy_min_action::common::{TICK_INTERVAL_SECS, elapsed_ms};
+use ngy_min_action::common::elapsed_ms;
 use ngy_min_action::config::Bootstrap;
 use ngy_min_action::store::Store;
 
@@ -42,9 +41,8 @@ pub(crate) fn run() -> Result<()> {
         "数据位置已解析"
     );
     let clock: Arc<dyn Clock> = Arc::new(SystemClock);
-    let ticks = spawn_ticker();
 
-    let app = MinActionApp::new(store, clock, ticks, bootstrap)?;
+    let app = MinActionApp::new(store, clock)?;
     info!(
         op = "startup",
         result = "ok",
@@ -83,47 +81,4 @@ fn acquire_instance(path: &Path) -> Result<Option<File>> {
         Err(std::fs::TryLockError::WouldBlock) => Ok(None),
         Err(std::fs::TryLockError::Error(error)) => Err(error).context("获取实例锁失败"),
     }
-}
-
-/// 在后台线程启动 tokio 运行时，按固定间隔向界面投递 tick。
-fn spawn_ticker() -> std::sync::mpsc::Receiver<TickEvent> {
-    let (sender, receiver) = channel();
-    let spawned = std::thread::Builder::new()
-        .name("min-action-ticker".to_owned())
-        .spawn(move || {
-            let runtime = match tokio::runtime::Builder::new_multi_thread()
-                .worker_threads(1)
-                .enable_time()
-                .build()
-            {
-                Ok(runtime) => runtime,
-                Err(error) => {
-                    warn!(
-                        op = "ticker",
-                        result = "error",
-                        error = %error,
-                        "后台运行时创建失败，跨日检测不可用"
-                    );
-                    return;
-                }
-            };
-            runtime.block_on(async move {
-                let mut ticker = tokio::time::interval(Duration::from_secs(TICK_INTERVAL_SECS));
-                loop {
-                    ticker.tick().await;
-                    if sender.send(TickEvent::Tick).is_err() {
-                        break;
-                    }
-                }
-            });
-        });
-    if let Err(error) = spawned {
-        warn!(
-            op = "ticker",
-            result = "error",
-            error = %error,
-            "后台线程创建失败，跨日检测不可用"
-        );
-    }
-    receiver
 }
