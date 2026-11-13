@@ -122,24 +122,40 @@ impl Render for TaskEditor {
                     .items_center()
                     .justify_between()
                     .child(div().child(format!("频率：{frequency_label}")))
-                    .child(Button::new("edit-frequency").label("编辑").on_click({
-                        let root = root.clone();
-                        let entity = entity.clone();
-                        let current = self.frequency;
-                        move |_ev, window, cx| {
-                            root.update(cx, |root, cx| {
-                                let app_entity = cx.entity().clone();
-                                root.open_frequency_dialog(
-                                    app_entity,
-                                    entity.clone(),
-                                    current,
-                                    window,
-                                    cx,
-                                );
-                                cx.notify();
-                            });
-                        }
-                    })),
+                    .child(
+                        div()
+                            .flex()
+                            .gap_2()
+                            .child(Button::new("edit-frequency").label("编辑").on_click({
+                                let root = root.clone();
+                                let entity = entity.clone();
+                                let current = self.frequency;
+                                move |_ev, window, cx| {
+                                    root.update(cx, |root, cx| {
+                                        let app_entity = cx.entity().clone();
+                                        root.open_frequency_dialog(
+                                            app_entity,
+                                            entity.clone(),
+                                            current,
+                                            window,
+                                            cx,
+                                        );
+                                        cx.notify();
+                                    });
+                                }
+                            }))
+                            .child(Button::new("reset-progress").label("重置进度").on_click({
+                                let root = root.clone();
+                                let task_id = self.task_id;
+                                move |_ev, window, cx| {
+                                    root.update(cx, |root, cx| {
+                                        let app_entity = cx.entity().clone();
+                                        root.open_reset_dialog(app_entity, task_id, window, cx);
+                                        cx.notify();
+                                    });
+                                }
+                            })),
+                    ),
             )
             .child(media_block(&media, &media_dir, entity))
             .child(

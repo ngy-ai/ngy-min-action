@@ -28,6 +28,7 @@ mod frequency_dialog;
 mod history_view;
 mod note_dialog;
 mod rename_dialog;
+mod reset_dialog;
 mod rich_content;
 mod stats_dialog;
 mod storage_dialog;
@@ -53,7 +54,7 @@ pub(crate) enum StructTarget {
     Category(CategoryId),
 }
 
-/// 当前打开的结构树对话框（重命名/删除/频率），与任务内容编辑器可叠加显示。
+/// 当前打开的结构树对话框（重命名/删除/频率/重置进度），与任务内容编辑器可叠加显示。
 #[derive(Clone)]
 pub(crate) enum StructDialog {
     /// 重命名目标或分类。
@@ -68,6 +69,8 @@ pub(crate) enum StructDialog {
     Storage(Entity<storage_dialog::StorageDialog>),
     /// 行动备注（左右两栏：来源任务 / 当前备注）。
     Note(Entity<note_dialog::NoteDialog>),
+    /// 重置任务复习进度（遗忘曲线归零）。
+    Reset(Entity<reset_dialog::ResetDialog>),
 }
 
 /// 中央区页签。
@@ -400,6 +403,28 @@ impl MinActionApp {
         });
         root.update(cx, |this, cx| {
             this.dialog = Some(StructDialog::Note(dialog));
+            cx.notify();
+        });
+    }
+
+    /// 打开重置复习进度对话框：依据任务名构造确认面板挂在根视图。
+    pub(crate) fn open_reset_dialog(
+        &mut self,
+        root: Entity<MinActionApp>,
+        task_id: TaskId,
+        _window: &mut Window,
+        cx: &mut App,
+    ) {
+        let task_name = self
+            .store
+            .task(task_id)
+            .map(|task| task.name)
+            .unwrap_or_default();
+        let dialog = cx.new(|_c| {
+            reset_dialog::ResetDialog::new(task_id, task_name, self.store.clone(), root.clone())
+        });
+        root.update(cx, |this, cx| {
+            this.dialog = Some(StructDialog::Reset(dialog));
             cx.notify();
         });
     }
@@ -884,6 +909,7 @@ impl Render for MinActionApp {
                     StructDialog::Stats(d) => d.into_any_element(),
                     StructDialog::Storage(d) => d.into_any_element(),
                     StructDialog::Note(d) => d.into_any_element(),
+                    StructDialog::Reset(d) => d.into_any_element(),
                 };
                 this.child(modal_overlay(child))
             })
