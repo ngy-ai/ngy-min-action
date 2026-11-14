@@ -3,6 +3,7 @@
 //! 以独立 gpui 视图渲染一个居中面板，用户选择「每天 / 每 N 天 / 每周 N 次」并填 N，
 //! 确认时把新频率写回 [`TaskEditor`]（`TaskEditor` 保存时统一写库），然后关闭对话框。
 
+use crate::palette::Palette;
 use gpui::{App, Context, Entity, Render, Window};
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::prelude::FluentBuilder;
@@ -114,6 +115,7 @@ impl Render for FrequencyDialog {
         let raw_state = self.raw.clone();
         let dialog_entity = cx.entity().clone();
         let error = self.error.clone();
+        let p = Palette::from_cx(cx);
 
         div()
             .id("frequency-dialog")
@@ -131,16 +133,19 @@ impl Render for FrequencyDialog {
                         dialog_entity.clone(),
                         FrequencyKind::Daily,
                         current_kind,
+                        &p,
                     ))
                     .child(kind_button(
                         dialog_entity.clone(),
                         FrequencyKind::EveryNDays,
                         current_kind,
+                        &p,
                     ))
                     .child(kind_button(
                         dialog_entity.clone(),
                         FrequencyKind::WeeklyN,
                         current_kind,
+                        &p,
                     )),
             )
             .when(current_kind != FrequencyKind::Daily, |this| {
@@ -154,7 +159,7 @@ impl Render for FrequencyDialog {
                 )
             })
             .when_some(error, |this, e| {
-                this.child(div().text_color(rgb(0xcc_66_66)).child(e))
+                this.child(div().text_color(p.danger_fg).child(e))
             })
             .child(
                 div()
@@ -162,7 +167,7 @@ impl Render for FrequencyDialog {
                     .gap_2()
                     .justify_end()
                     .child(cancel_button(root.clone()))
-                    .child(confirm_button(dialog_entity.clone(), editor, root)),
+                    .child(confirm_button(dialog_entity.clone(), editor, root, &p)),
             )
     }
 }
@@ -172,6 +177,7 @@ fn kind_button(
     dialog: Entity<FrequencyDialog>,
     kind: FrequencyKind,
     current: FrequencyKind,
+    palette: &Palette,
 ) -> impl IntoElement {
     let selected = kind == current;
     div()
@@ -180,7 +186,7 @@ fn kind_button(
         .py_1()
         .cursor_pointer()
         .rounded_md()
-        .when(selected, |this| this.bg(rgb(0x33_33_38)))
+        .when(selected, |this| this.bg(palette.selected))
         .child(match kind {
             FrequencyKind::Daily => "每天",
             FrequencyKind::EveryNDays => "每 N 天",
@@ -217,6 +223,7 @@ fn confirm_button(
     dialog: Entity<FrequencyDialog>,
     editor: Entity<TaskEditor>,
     root: Entity<MinActionApp>,
+    palette: &Palette,
 ) -> impl IntoElement {
     div()
         .id("freq-confirm")
@@ -224,7 +231,7 @@ fn confirm_button(
         .py_1()
         .cursor_pointer()
         .rounded_md()
-        .bg(rgb(0x33_33_38))
+        .bg(palette.raised)
         .child("确定")
         .on_click(move |_ev, _window, cx| {
             dialog.update(cx, |this, cx| {

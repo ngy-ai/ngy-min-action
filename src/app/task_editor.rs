@@ -10,6 +10,7 @@
 use std::path::Path;
 use std::sync::Arc;
 
+use crate::palette::Palette;
 use gpui::{App, Context, Entity, Render, Window};
 use gpui_kit::component::attachment::{
     Attachment, AttachmentActions, AttachmentContent, AttachmentDescription, AttachmentMedia,
@@ -78,6 +79,7 @@ impl TaskEditor {
 impl Render for TaskEditor {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let task_id = self.task_id;
+        let p = Palette::from_cx(cx);
         let root = self.root.clone();
         let name_state = self.name.clone();
         let est_state = self.estimated_minutes.clone();
@@ -166,12 +168,15 @@ impl Render for TaskEditor {
                     .child(cancel_button(root.clone()))
                     .child(save_button(
                         task_id,
-                        name_state,
-                        est_state,
-                        desc_state,
+                        EditFields {
+                            name: name_state,
+                            est: est_state,
+                            desc: desc_state,
+                        },
                         store,
                         root,
                         self.frequency,
+                        &p,
                     )),
             )
     }
@@ -381,15 +386,21 @@ fn cancel_button(root: Entity<MinActionApp>) -> impl IntoElement {
         })
 }
 
+/// 任务编辑器里的三个输入控件句柄，打包以控制函数参数数量。
+struct EditFields {
+    name: Entity<InputState>,
+    est: Entity<InputState>,
+    desc: Entity<TextareaState>,
+}
+
 /// 「保存」按钮：写回数据后关闭。
 fn save_button(
     task_id: TaskId,
-    name_state: Entity<InputState>,
-    est_state: Entity<InputState>,
-    desc_state: Entity<TextareaState>,
+    fields: EditFields,
     store: Arc<Store>,
     root: Entity<MinActionApp>,
     frequency: Frequency,
+    palette: &Palette,
 ) -> impl IntoElement {
     div()
         .id("editor-save")
@@ -397,12 +408,12 @@ fn save_button(
         .py_1()
         .cursor_pointer()
         .rounded_md()
-        .bg(rgb(0x33_33_38))
+        .bg(palette.raised)
         .child("保存")
         .on_click(move |_ev, _window, cx| {
-            let name = name_state.read(cx).value().trim().to_string();
-            let description = desc_state.read(cx).value().trim().to_string();
-            let estimated = est_state.read(cx).value().trim().parse::<u16>().ok();
+            let name = fields.name.read(cx).value().trim().to_string();
+            let description = fields.desc.read(cx).value().trim().to_string();
+            let estimated = fields.est.read(cx).value().trim().parse::<u16>().ok();
             let _ = apply_edits(&store, task_id, &name, &description, estimated, frequency);
             root.update(cx, |root, cx| {
                 let _ = root.reload();
