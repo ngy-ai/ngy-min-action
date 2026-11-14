@@ -69,8 +69,10 @@
 | 深色主题外观 | 全暗背景，文字/按钮/高亮一致，无异常 |
 | 浅色主题外观（修复后） | 全部 UI 随主题取色：工具栏、结构树选中行、任务行、页签胶囊、主题按钮、6 个对话框均无残留深色硬编码 |
 
-截图：`D:\temp\shot_light.png`、`D:\temp\shot_dark.png`（1550×1133，未入库）；
-修复后复验 `D:\temp\shot_light2.png`（1550×1133，未入库）。
+截图（均存于 `D:\temp`，未入库；尺寸 1550×1045）：
+- 浅色：`shot_tasks.png` / `shot_today.png` / `shot_history.png` / `shot_stats.png` / `shot_storage.png` / `shot_reset.png`
+- 深色：`shot_tasks_dark.png` / `shot_today_dark.png` / `shot_history_dark.png` / `shot_stats_dark.png` / `shot_storage_dark.png` / `shot_reset_dark.png`
+- 早期 T018 复验：`shot_light.png` / `shot_dark.png` / `shot_light2.png`
 
 ### 已修复的外观问题 ✅
 
@@ -84,6 +86,26 @@
 `toolbar.rs`/`structure_tree.rs`/`today_view.rs`/`history_view.rs` 与 6 个对话框中的全部
 硬编码 `rgb(0x…)`；主 render 顶部刷新 `self.palette`，独立对话框在各自 `render` 内取色。
 
-### 未覆盖（锁屏无法点击，需解锁后人工补验）
+### 已补验（解锁后补齐，T019）
 
-「今日待办」「历史待办」页签、工具栏每日上限步进、统计/存储/重置三个对话框的截图。
+锁屏下 `SendInput` 点击进不了应用桌面，且 gpui **自绘内容不通过 Windows UI 自动化暴露**
+（UIA 仅能看到「最小化/最大化/关闭」等系统标题栏按钮，页签、工具栏、对话框均无可达子元素），
+因此无法靠点击切换页签 / 打开对话框。补齐方式：在 `run` 外的临时驱动里用环境变量预设初始视图
+（首帧即渲染目标页签或浮层），再用既有 `PrintWindow` 抓窗口——全程无需点击，且浮层是主窗口
+`modal_overlay` 叠加，`PrintWindow` 直接含其内容。种子数据经 `Store` 公开 API 写入隔离库
+（`%LOCALAPPDATA%=D:\temp`），含 2 目标 / 3 分类 / 4 任务与若干历史行动。
+
+| 视图 / 对话框 | 浅色 | 深色 |
+| --- | --- | --- |
+| 任务页（默认） | `shot_tasks.png` | `shot_tasks_dark.png` |
+| 今日待办页签 | `shot_today.png` | `shot_today_dark.png` |
+| 历史待办页签 | `shot_history.png` | `shot_history_dark.png` |
+| 统计对话框 | `shot_stats.png` | `shot_stats_dark.png` |
+| 存储对话框 | `shot_storage.png` | `shot_storage_dark.png` |
+| 重置对话框 | `shot_reset.png` | `shot_reset_dark.png` |
+
+工具栏每日上限步进随任务页截图一并呈现（步进按钮在工具栏常驻显示，未单独点击）。
+哈希比对确认各浮层截图明显异于无浮层的任务页（如 `shot_stats.png` 像素异于 `shot_tasks.png`），
+且深色与浅色同视图像素相异，取色随主题生效。
+
+> 临时驱动代码（环境变量钩子）与种子示例均已在截图后回退 / 删除，未进入提交。
