@@ -67,14 +67,22 @@
 | 任务页签 | 所选分类「锻炼」下展示 晨跑/力量训练 |
 | 主题持久化与切换 | `settings.theme`=light/dark 重启后均正确应用（深色按钮相应高亮） |
 | 深色主题外观 | 全暗背景，文字/按钮/高亮一致，无异常 |
+| 浅色主题外观（修复后） | 全部 UI 随主题取色：工具栏、结构树选中行、任务行、页签胶囊、主题按钮、6 个对话框均无残留深色硬编码 |
 
-截图：`D:\temp\shot_light.png`、`D:\temp\shot_dark.png`（1550×1133，未入库）。
+截图：`D:\temp\shot_light.png`、`D:\temp\shot_dark.png`（1550×1133，未入库）；
+修复后复验 `D:\temp\shot_light2.png`（1550×1133，未入库）。
 
-### 发现的外观问题 ⚠️
+### 已修复的外观问题 ✅
 
 **浅色主题下部分元素为硬编码深色，不随主题切换**：应用头部「最小行动」条、结构树选中行
 （`structure_tree.rs` 的 `rgb(0x2a_2a_2e)`）、任务列表行、「任务」页签胶囊、主题按钮胶囊。
 深色主题下无此问题（一切本就深色）。属样式打磨项，不阻塞迁移验收。
+
+**修复方式**：新增 `src/palette.rs`，`Palette::from_cx(cx)` 从 `Theme::global(cx)`
+（deref 到 `ThemeColor`）取随深浅自适应的 token（`title_bar`/`muted`/`popover`/`list_active`/
+`tab_active`/`muted_foreground`/`secondary_foreground`/`foreground`/`danger*`），替换
+`toolbar.rs`/`structure_tree.rs`/`today_view.rs`/`history_view.rs` 与 6 个对话框中的全部
+硬编码 `rgb(0x…)`；主 render 顶部刷新 `self.palette`，独立对话框在各自 `render` 内取色。
 
 ### 未覆盖（锁屏无法点击，需解锁后人工补验）
 
