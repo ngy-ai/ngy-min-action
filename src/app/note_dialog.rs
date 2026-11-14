@@ -6,6 +6,7 @@
 
 use std::sync::Arc;
 
+use crate::palette::Palette;
 use gpui::{App, Context, Entity, FontWeight, Render, Window};
 use gpui_kit::component::input::{Textarea, TextareaState};
 use gpui_kit::prelude::FluentBuilder;
@@ -69,6 +70,7 @@ impl Render for NoteDialog {
         let action_id = self.action_id;
         let dialog = cx.entity().clone();
         let error = self.error.clone();
+        let p = Palette::from_cx(cx);
 
         div()
             .id("note-dialog")
@@ -99,7 +101,7 @@ impl Render for NoteDialog {
                             .child(
                                 div()
                                     .text_size(px(12.))
-                                    .text_color(rgb(0x88_88_88))
+                                    .text_color(p.text_muted)
                                     .child("来源任务"),
                             )
                             .child(div().font_weight(FontWeight::BOLD).child(task_name.clone()))
@@ -107,7 +109,7 @@ impl Render for NoteDialog {
                                 this.child(
                                     div()
                                         .text_size(px(12.))
-                                        .text_color(rgb(0xbb_bb_bb))
+                                        .text_color(p.text_muted2)
                                         .child(desc),
                                 )
                             }),
@@ -122,7 +124,7 @@ impl Render for NoteDialog {
                             .child(
                                 div()
                                     .text_size(px(12.))
-                                    .text_color(rgb(0x88_88_88))
+                                    .text_color(p.text_muted)
                                     .child("当前备注"),
                             )
                             .child(Textarea::new(&note_state).h(px(200.))),
@@ -137,7 +139,7 @@ impl Render for NoteDialog {
                     .gap_2()
                     .justify_end()
                     .child(cancel_button(root.clone()))
-                    .child(save_button(dialog, action_id, note_state, store, root)),
+                    .child(save_button(dialog, action_id, note_state, store, root, &p)),
             )
     }
 }
@@ -166,6 +168,7 @@ fn save_button(
     note_state: Entity<TextareaState>,
     store: Arc<Store>,
     root: Entity<MinActionApp>,
+    palette: &Palette,
 ) -> impl IntoElement {
     div()
         .id("note-save")
@@ -173,7 +176,7 @@ fn save_button(
         .py_1()
         .cursor_pointer()
         .rounded_md()
-        .bg(rgb(0x33_33_38))
+        .bg(palette.raised)
         .child("保存")
         .on_click(move |_ev, _window, cx| {
             let note = note_state.read(cx).value();

@@ -5,6 +5,7 @@
 
 use std::sync::Arc;
 
+use crate::palette::Palette;
 use gpui::{App, Context, Entity, Render, Window};
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::*;
@@ -42,11 +43,12 @@ impl RenameDialog {
 }
 
 impl Render for RenameDialog {
-    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let name_state = self.name.clone();
         let store = self.store.clone();
         let root = self.root.clone();
         let target = self.target;
+        let p = Palette::from_cx(cx);
         div()
             .id("rename-dialog")
             .flex()
@@ -69,7 +71,7 @@ impl Render for RenameDialog {
                     .gap_2()
                     .justify_end()
                     .child(cancel_button(root.clone()))
-                    .child(confirm_button(target, name_state, store, root)),
+                    .child(confirm_button(target, name_state, store, root, &p)),
             )
     }
 }
@@ -97,6 +99,7 @@ fn confirm_button(
     name_state: Entity<InputState>,
     store: Arc<Store>,
     root: Entity<MinActionApp>,
+    palette: &Palette,
 ) -> impl IntoElement {
     div()
         .id("rename-confirm")
@@ -104,7 +107,7 @@ fn confirm_button(
         .py_1()
         .cursor_pointer()
         .rounded_md()
-        .bg(rgb(0x33_33_38))
+        .bg(palette.raised)
         .child("确定")
         .on_click(move |_ev, _window, cx| {
             let name = name_state.read(cx).value().trim().to_string();

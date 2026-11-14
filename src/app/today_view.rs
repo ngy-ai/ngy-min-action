@@ -3,6 +3,7 @@
 //! 数据来自 `MinActionApp::today_actions`（已在 `reload` 时由 scheduler 幂等生成）。每条行动经
 //! `settle_today_action` / `undo_today_action` 流转状态；「备注」按钮打开左右两栏备注对话框。
 
+use crate::palette::Palette;
 use gpui::{ClickEvent, Entity, Window};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
@@ -28,12 +29,17 @@ pub(crate) fn render(entity: Entity<MinActionApp>, app: &MinActionApp) -> impl I
 
     div().id("today").flex().flex_col().gap_2().children(
         rows.into_iter()
-            .map(move |(action, name)| action_row(entity.clone(), action, name)),
+            .map(move |(action, name)| action_row(entity.clone(), action, name, &app.palette)),
     )
 }
 
 /// 单行：任务名 + 备注入口 + 状态相关的操作按钮（完成/跳过/撤销）。
-fn action_row(entity: Entity<MinActionApp>, action: Action, name: String) -> impl IntoElement {
+fn action_row(
+    entity: Entity<MinActionApp>,
+    action: Action,
+    name: String,
+    palette: &Palette,
+) -> impl IntoElement {
     let action_id = action.id;
     let status_label = status_text(action.status);
     div()
@@ -44,7 +50,7 @@ fn action_row(entity: Entity<MinActionApp>, action: Action, name: String) -> imp
         .px_2()
         .py_1()
         .rounded_md()
-        .bg(rgb(0x24_24_28))
+        .bg(palette.panel)
         .child(div().flex_1().child(name))
         .child(
             div()
@@ -52,7 +58,7 @@ fn action_row(entity: Entity<MinActionApp>, action: Action, name: String) -> imp
                 .gap_1()
                 .child(note_button(entity.clone(), action_id))
                 .when(action.status.is_settled(), |this| {
-                    this.child(undo_button(entity.clone(), action_id))
+                    this.child(undo_button(entity.clone(), action_id, palette))
                 })
                 .when(action.status == ActionStatus::Pending, |this| {
                     this.child(action_button(
@@ -61,6 +67,7 @@ fn action_row(entity: Entity<MinActionApp>, action: Action, name: String) -> imp
                         entity.clone(),
                         action_id,
                         ActionStatus::Done,
+                        palette,
                     ))
                     .child(action_button(
                         "today-skip",
@@ -68,6 +75,7 @@ fn action_row(entity: Entity<MinActionApp>, action: Action, name: String) -> imp
                         entity.clone(),
                         action_id,
                         ActionStatus::Skipped,
+                        palette,
                     ))
                 })
                 .when(
@@ -95,6 +103,7 @@ fn action_button(
     entity: Entity<MinActionApp>,
     action_id: ActionId,
     next: ActionStatus,
+    palette: &Palette,
 ) -> impl IntoElement {
     div()
         .id(id)
@@ -102,8 +111,8 @@ fn action_button(
         .py_0()
         .cursor_pointer()
         .text_size(px(11.))
-        .text_color(rgb(0x99_99_99))
-        .hover(|this| this.text_color(rgb(0xcc_cc_cc)))
+        .text_color(palette.text_muted)
+        .hover(|this| this.text_color(palette.text))
         .child(label)
         .on_click(
             move |_ev: &ClickEvent, _window: &mut Window, cx: &mut App| {
@@ -116,15 +125,19 @@ fn action_button(
 }
 
 /// 撤销按钮：回滚最近一次结算并刷新。
-fn undo_button(entity: Entity<MinActionApp>, action_id: ActionId) -> impl IntoElement {
+fn undo_button(
+    entity: Entity<MinActionApp>,
+    action_id: ActionId,
+    palette: &Palette,
+) -> impl IntoElement {
     div()
         .id("today-undo")
         .px_1()
         .py_0()
         .cursor_pointer()
         .text_size(px(11.))
-        .text_color(rgb(0x99_99_99))
-        .hover(|this| this.text_color(rgb(0xcc_cc_cc)))
+        .text_color(palette.text_muted)
+        .hover(|this| this.text_color(palette.text))
         .child("撤销")
         .on_click(
             move |_ev: &ClickEvent, _window: &mut Window, cx: &mut App| {

@@ -11,6 +11,7 @@ use super::WINDOW_TITLE;
 use super::apply_theme_choice;
 use crate::common::{DAILY_CAP_MAX, DAILY_CAP_MIN};
 use crate::model::ThemeChoice;
+use crate::palette::Palette;
 
 impl MinActionApp {
     /// 渲染顶部菜单栏（应用标题 + 迁移版标识）。
@@ -23,7 +24,7 @@ impl MinActionApp {
             .px_2()
             .py_1()
             .border_b_1()
-            .bg(rgb(0x1e_1e_22))
+            .bg(self.palette.surface)
             .child(
                 div()
                     .font_weight(gpui_kit::FontWeight::BOLD)
@@ -32,7 +33,7 @@ impl MinActionApp {
             .child(
                 div()
                     .text_size(px(11.))
-                    .text_color(rgb(0x88_88_88))
+                    .text_color(self.palette.text_muted)
                     .child("gpui-kit 迁移版"),
             )
     }
@@ -60,6 +61,7 @@ impl MinActionApp {
                         "cap-dec",
                         "−",
                         cap.saturating_sub(1).max(DAILY_CAP_MIN),
+                        &self.palette,
                     ))
                     .child(div().min_w(px(18.)).text_center().child(cap.to_string()))
                     .child(cap_button(
@@ -67,9 +69,10 @@ impl MinActionApp {
                         "cap-inc",
                         "+",
                         cap.saturating_add(1).min(DAILY_CAP_MAX),
+                        &self.palette,
                     )),
             )
-            .child(self.theme_selector(entity.clone(), theme))
+            .child(self.theme_selector(entity.clone(), theme, &self.palette))
             .child(stats_button(entity.clone()))
             .child(storage_button(entity.clone()))
     }
@@ -79,6 +82,7 @@ impl MinActionApp {
         &self,
         entity: Entity<MinActionApp>,
         current: ThemeChoice,
+        palette: &Palette,
     ) -> impl IntoElement {
         let choices = [
             (ThemeChoice::System, "跟随系统"),
@@ -91,7 +95,7 @@ impl MinActionApp {
             .gap_1()
             .child(div().child("主题"))
             .children(choices.into_iter().map(move |(choice, label)| {
-                theme_button(entity.clone(), choice, label, choice == current)
+                theme_button(entity.clone(), choice, label, choice == current, palette)
             }))
     }
 
@@ -117,7 +121,7 @@ impl MinActionApp {
             .py_1()
             .border_t_1()
             .text_size(px(11.))
-            .text_color(rgb(0x99_99_99))
+            .text_color(self.palette.text_muted)
             .child(format!("每日上限 {}", self.daily_cap))
             .child(format!("主题 {theme_label}"))
             .child(format!("今日 完成 {done}/{total}"))
@@ -169,6 +173,7 @@ pub(crate) fn cap_button(
     id: &'static str,
     label: &'static str,
     target: u8,
+    palette: &Palette,
 ) -> impl IntoElement {
     div()
         .id(id)
@@ -176,7 +181,7 @@ pub(crate) fn cap_button(
         .py_0()
         .cursor_pointer()
         .rounded_md()
-        .bg(rgb(0x2c2c32))
+        .bg(palette.inactive_pill)
         .text_size(px(12.))
         .child(label)
         .on_click(move |_ev, _window, cx| {
@@ -193,6 +198,7 @@ pub(crate) fn theme_button(
     choice: ThemeChoice,
     label: &'static str,
     active: bool,
+    palette: &Palette,
 ) -> impl IntoElement {
     div()
         .id(format!("theme-{}", choice.as_str()))
@@ -200,8 +206,8 @@ pub(crate) fn theme_button(
         .py_0()
         .cursor_pointer()
         .rounded_md()
-        .when(active, |this| this.bg(rgb(0x3a_3a_42)))
-        .when(!active, |this| this.bg(rgb(0x2c2c32)))
+        .when(active, |this| this.bg(palette.active_pill))
+        .when(!active, |this| this.bg(palette.inactive_pill))
         .text_size(px(12.))
         .child(label)
         .on_click(move |_ev, window, cx| {

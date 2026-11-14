@@ -5,6 +5,7 @@
 
 use std::sync::Arc;
 
+use crate::palette::Palette;
 use gpui::{Context, Entity, Render, Window};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
@@ -46,6 +47,7 @@ impl Render for ResetDialog {
         let task_id = self.task_id;
         let store = self.store.clone();
         let root = self.root.clone();
+        let p = Palette::from_cx(cx);
         div()
             .id("reset-dialog")
             .flex()
@@ -59,7 +61,7 @@ impl Render for ResetDialog {
                 self.task_name
             )))
             .when_some(self.error.clone(), |this, message| {
-                this.child(div().text_color(rgb(0xff_55_55)).child(message))
+                this.child(div().text_color(p.danger_fg).child(message))
             })
             .child(
                 div()
@@ -67,7 +69,7 @@ impl Render for ResetDialog {
                     .gap_2()
                     .justify_end()
                     .child(cancel_button(root.clone()))
-                    .child(confirm_button(task_id, store, root, dialog_entity)),
+                    .child(confirm_button(task_id, store, root, dialog_entity, &p)),
             )
     }
 }
@@ -95,6 +97,7 @@ fn confirm_button(
     store: Arc<Store>,
     root: Entity<MinActionApp>,
     dialog: Entity<ResetDialog>,
+    palette: &Palette,
 ) -> impl IntoElement {
     div()
         .id("reset-confirm")
@@ -102,7 +105,7 @@ fn confirm_button(
         .py_1()
         .cursor_pointer()
         .rounded_md()
-        .bg(rgb(0x33_33_38))
+        .bg(palette.raised)
         .child("确认重置")
         .on_click(
             move |_ev, _window, cx| match store.reset_review_progress(task_id) {

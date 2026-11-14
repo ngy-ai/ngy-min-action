@@ -6,6 +6,7 @@
 
 use std::sync::Arc;
 
+use crate::palette::Palette;
 use gpui::{App, Context, Entity, Render, Window};
 use gpui_kit::*;
 
@@ -42,11 +43,12 @@ impl DeleteDialog {
 }
 
 impl Render for DeleteDialog {
-    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let store = self.store.clone();
         let root = self.root.clone();
         let target = self.target;
         let impact = self.impact;
+        let p = Palette::from_cx(cx);
         div()
             .id("delete-dialog")
             .flex()
@@ -65,7 +67,7 @@ impl Render for DeleteDialog {
                     .gap_2()
                     .justify_end()
                     .child(cancel_button(root.clone()))
-                    .child(confirm_button(target, store, root)),
+                    .child(confirm_button(target, store, root, &p)),
             )
     }
 }
@@ -92,6 +94,7 @@ fn confirm_button(
     target: StructTarget,
     store: Arc<Store>,
     root: Entity<MinActionApp>,
+    palette: &Palette,
 ) -> impl IntoElement {
     div()
         .id("delete-confirm")
@@ -99,7 +102,7 @@ fn confirm_button(
         .py_1()
         .cursor_pointer()
         .rounded_md()
-        .bg(rgb(0x88_33_33))
+        .bg(palette.danger)
         .child("删除")
         .on_click(move |_ev, _window, cx| {
             let result = match target {

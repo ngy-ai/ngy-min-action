@@ -10,6 +10,7 @@ pub mod common;
 pub mod config;
 pub mod model;
 pub mod notify;
+pub mod palette;
 pub mod review;
 pub mod schedule;
 pub mod storage;

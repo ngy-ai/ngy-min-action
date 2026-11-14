@@ -2,12 +2,14 @@ use gpui::{App, ClickEvent, Window};
 use gpui_kit::*;
 
 use super::*;
+use crate::palette::Palette;
 
 impl MinActionApp {
     /// 渲染左侧结构树面板。
     pub(crate) fn render_structure(&self, entity: Entity<Self>) -> impl IntoElement {
         let selected_goal = self.selected_goal;
         let selected_category = self.selected_category;
+        let palette = self.palette;
         div()
             .id("structure")
             .w(px(240.))
@@ -35,7 +37,7 @@ impl MinActionApp {
                                 .px_3()
                                 .py_1()
                                 .rounded_md()
-                                .when(goal_selected, |this| this.bg(rgb(0x2a_2a_2e)))
+                                .when(goal_selected, |this| this.bg(self.palette.selected))
                                 .flex()
                                 .items_center()
                                 .justify_between()
@@ -58,6 +60,7 @@ impl MinActionApp {
                                         .child(struct_action(
                                             "goal-rename",
                                             "重命名",
+                                            &palette,
                                             move |_ev, window, cx| {
                                                 open_rename(
                                                     rename_entity.clone(),
@@ -71,6 +74,7 @@ impl MinActionApp {
                                         .child(struct_action(
                                             "goal-delete",
                                             "删除",
+                                            &palette,
                                             move |_ev, window, cx| {
                                                 let impact = delete_entity
                                                     .read(cx)
@@ -108,7 +112,7 @@ impl MinActionApp {
                                         .pl_6()
                                         .py_1()
                                         .rounded_md()
-                                        .when(cat_selected, |this| this.bg(rgb(0x2a_2a_2e)))
+                                        .when(cat_selected, |this| this.bg(self.palette.selected))
                                         .flex()
                                         .items_center()
                                         .justify_between()
@@ -131,6 +135,7 @@ impl MinActionApp {
                                                 .child(struct_action(
                                                     "cat-rename",
                                                     "重命名",
+                                                    &palette,
                                                     move |_ev, window, cx| {
                                                         open_rename(
                                                             cat_rename.clone(),
@@ -144,6 +149,7 @@ impl MinActionApp {
                                                 .child(struct_action(
                                                     "cat-delete",
                                                     "删除",
+                                                    &palette,
                                                     move |_ev, window, cx| {
                                                         let impact = cat_delete
                                                             .read(cx)
@@ -171,6 +177,7 @@ impl MinActionApp {
 fn struct_action(
     id: &'static str,
     label: &'static str,
+    palette: &Palette,
     handler: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
 ) -> impl IntoElement {
     div()
@@ -179,8 +186,8 @@ fn struct_action(
         .py_0()
         .cursor_pointer()
         .text_size(px(11.))
-        .text_color(rgb(0x99_99_99))
-        .hover(|this| this.text_color(rgb(0xcc_cc_cc)))
+        .text_color(palette.text_muted)
+        .hover(|this| this.text_color(palette.text))
         .child(label)
         .on_click(handler)
 }

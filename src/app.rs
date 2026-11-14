@@ -18,6 +18,7 @@ use crate::model::{
     Action, ActionId, ActionStatus, Category, CategoryId, DeletionImpact, Goal, GoalId, Task,
     ThemeChoice,
 };
+use crate::palette::Palette;
 use crate::store::Store;
 use gpui_kit::component::theme::{Theme, ThemeMode};
 
@@ -124,6 +125,8 @@ pub struct MinActionApp {
     pub(crate) daily_cap: u8,
     /// 主题偏好（从设置读取，供工具栏高亮与启动时应用）。
     pub(crate) theme_choice: ThemeChoice,
+    /// 当前主题取色板，主 `render` 中按当前主题刷新。
+    pub(crate) palette: Palette,
 }
 
 impl MinActionApp {
@@ -147,6 +150,7 @@ impl MinActionApp {
             history_has_more: false,
             daily_cap: DAILY_CAP_DEFAULT,
             theme_choice: ThemeChoice::System,
+            palette: Palette::default(),
         };
         app.reload()?;
         app.load_history_first()?;
@@ -370,7 +374,9 @@ impl MinActionApp {
                     .px_3()
                     .py_2()
                     .cursor_pointer()
-                    .when(active, |this| this.border_b_2().bg(rgb(0x33_33_38)))
+                    .when(active, |this| {
+                        this.border_b_2().bg(self.palette.active_pill)
+                    })
                     .child(t.label())
                     .on_click(move |_ev, _window, cx| {
                         entity.update(cx, |this, cx| {
@@ -429,7 +435,7 @@ impl MinActionApp {
                             .px_2()
                             .py_1()
                             .rounded_md()
-                            .bg(rgb(0x24_24_28))
+                            .bg(self.palette.panel)
                             .cursor_pointer()
                             .child(name)
                             .on_click(move |_ev, window, cx| {
@@ -482,6 +488,7 @@ impl Render for MinActionApp {
         cx: &mut Context<'_, MinActionApp>,
     ) -> impl IntoElement {
         let entity = cx.entity();
+        self.palette = Palette::from_cx(&*cx);
         div()
             .size_full()
             .relative()
@@ -499,7 +506,7 @@ impl Render for MinActionApp {
             )
             .child(self.render_status_bar())
             .when_some(self.editing.clone(), |this, editing| {
-                this.child(modal_overlay(editing))
+                this.child(modal_overlay(editing, &self.palette))
             })
             .when_some(self.dialog.clone(), |this, dialog| {
                 let child: AnyElement = match dialog {
@@ -511,13 +518,13 @@ impl Render for MinActionApp {
                     StructDialog::Note(d) => d.into_any_element(),
                     StructDialog::Reset(d) => d.into_any_element(),
                 };
-                this.child(modal_overlay(child))
+                this.child(modal_overlay(child, &self.palette))
             })
     }
 }
 
 /// 居中的模态遮罩：半透明底色 + 中央卡片容器，包裹任意对话框内容。
-fn modal_overlay(child: impl IntoElement) -> impl IntoElement {
+fn modal_overlay(child: impl IntoElement, palette: &Palette) -> impl IntoElement {
     div()
         .absolute()
         .inset_0()
@@ -525,5 +532,5 @@ fn modal_overlay(child: impl IntoElement) -> impl IntoElement {
         .flex()
         .items_center()
         .justify_center()
-        .child(div().bg(rgb(0x20_20_24)).rounded_lg().child(child))
+        .child(div().bg(palette.raised).rounded_lg().child(child))
 }
