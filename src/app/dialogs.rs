@@ -26,10 +26,8 @@ impl MinActionApp {
         let dialog = cx.new(|c| {
             frequency_dialog::FrequencyDialog::new(editor, root.clone(), current, window, c)
         });
-        root.update(cx, |this, cx| {
-            this.dialog = Some(StructDialog::Frequency(dialog));
-            cx.notify();
-        });
+        self.dialog = Some(StructDialog::Frequency(dialog));
+        cx.notify(root.entity_id());
     }
 
     /// 打开复习统计对话框：从数据层算出 `ReviewStats` 后构造对话框挂在根视图。
@@ -51,10 +49,8 @@ impl MinActionApp {
             }
         };
         let dialog = cx.new(|_c| stats_dialog::StatsDialog::new(stats, root.clone()));
-        root.update(cx, |this, cx| {
-            this.dialog = Some(StructDialog::Stats(dialog));
-            cx.notify();
-        });
+        self.dialog = Some(StructDialog::Stats(dialog));
+        cx.notify(root.entity_id());
     }
 
     /// 打开存储对话框：从数据目录递归算出占用后构造对话框挂在根视图。
@@ -66,10 +62,8 @@ impl MinActionApp {
     ) {
         let info = storage_dialog::collect_storage(self.store.data_dir());
         let dialog = cx.new(|_c| storage_dialog::StorageDialog::new(info, root.clone()));
-        root.update(cx, |this, cx| {
-            this.dialog = Some(StructDialog::Storage(dialog));
-            cx.notify();
-        });
+        self.dialog = Some(StructDialog::Storage(dialog));
+        cx.notify(root.entity_id());
     }
 
     /// 打开行动备注对话框：用来源任务上下文与既有备注构造两栏对话框挂在根视图。
@@ -91,10 +85,8 @@ impl MinActionApp {
                 c,
             )
         });
-        root.update(cx, |this, cx| {
-            this.dialog = Some(StructDialog::Note(dialog));
-            cx.notify();
-        });
+        self.dialog = Some(StructDialog::Note(dialog));
+        cx.notify(root.entity_id());
     }
 
     /// 打开重置复习进度对话框：依据任务名构造确认面板挂在根视图。
@@ -113,9 +105,7 @@ impl MinActionApp {
         let dialog = cx.new(|_c| {
             reset_dialog::ResetDialog::new(task_id, task_name, self.store.clone(), root.clone())
         });
-        root.update(cx, |this, cx| {
-            this.dialog = Some(StructDialog::Reset(dialog));
-            cx.notify();
-        });
+        self.dialog = Some(StructDialog::Reset(dialog));
+        cx.notify(root.entity_id());
     }
 }
