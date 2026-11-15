@@ -109,3 +109,45 @@
 且深色与浅色同视图像素相异，取色随主题生效。
 
 > 临时驱动代码（环境变量钩子）与种子示例均已在截图后回退 / 删除，未进入提交。
+
+## 五、后续修复：对话框开启触发 double-lease panic
+
+**分支**：`fix/dialog-double-lease`（基于 `main`，未改动 `main`）
+**PR**：#27
+**日期**：2026-11-15
+
+### 现象
+
+运行 `cargo run` 后点击以下入口之一即崩溃、进程 abort：
+
+- 工具栏「统计」「存储」按钮（`toolbar.rs` 的 `stats_button` / `storage_button`）；
+- 任务编辑器内「编辑频率」「重置进度」（`task_editor.rs`）。
+
+崩溃信息：`cannot update ngy_min_action::app::MinActionApp while it is already being updated`，
+源于 gpui 的实体二次 lease（`entity_map.rs:192` double_lease_panic），属不可展开 panic → `STATUS_STACK_BUFFER_OVERRUN`。
+
+### 根因
+
+点击回调在 `app.update(cx, |root, cx| …)` 闭包内已对 `MinActionApp` 实体上锁（lease），
+随后调用 `root.open_*(…)`；而 `dialogs.rs` 的五个 `open_*` 方法内部又用 `root.update(cx, …)`
+对**同一个实体**再次上锁，触发 double-lease。
+
+### 修复
+
+五个 `open_*`（`open_frequency_dialog` / `open_stats` / `open_storage` / `open_note_dialog` /
+`open_reset_dialog`）已拿到 `&mut self`（调用时已是合法 lease），改为直接写 `self.dialog`，
+不再二次 `root.update`；`cx.notify()` 按本版 gpui 签名改为 `cx.notify(root.entity_id())`。
+
+### 复验（本地 CI 六门禁复跑）
+
+| 门禁 | 结果 |
+| --- | --- |
+| `cargo fmt --check` | ✅ |
+| `cargo clippy --all-targets --all-features -- -D warnings` | ✅ 无警告 |
+| `cargo test --all-targets --all-features` | ✅（8 单元/集成 + 5 主题 + 基准全绿） |
+| `cargo machete` | ✅ 无 |
+| `cargo audit` | 同 015（仅 gpui-kit 传递依赖 warning 级，未新增抑制） |
+| 治理（行数/死代码抑制） | ✅ 未引入超规模或 `#[allow(dead_code)]` |
+
+> 因运行实例占用会导致 `cargo test/clippy` 锁住 exe 报 `failed to remove file`，复跑前已确认无运行实例。
+> GUI 点击验收（各对话框）建议待 PR 合并后由人工 `cargo run` 复点。
