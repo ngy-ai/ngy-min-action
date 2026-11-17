@@ -164,16 +164,7 @@ impl MinActionApp {
         self.all_tasks = self.store.all_tasks()?;
         self.recompute_task_counts();
 
-        if self.selected_goal.is_none() {
-            self.selected_goal = self.all_goals.first().map(|goal| goal.id);
-        }
-        if self.selected_category.is_none() {
-            self.selected_category = self
-                .all_categories
-                .iter()
-                .find(|category| Some(category.goal_id) == self.selected_goal)
-                .map(|category| category.id);
-        }
+        self.normalize_selection();
         self.daily_cap = self.store.daily_cap()?;
         self.theme_choice = self.store.theme_choice()?;
         self.reload_today()?;
@@ -278,21 +269,62 @@ impl MinActionApp {
         self.tab = tab;
     }
 
-    /// 选中目标，并把当前分类归一化到该目标下第一个分类。
-    pub(crate) fn select_goal(&mut self, goal: GoalId) {
-        self.selected_goal = Some(goal);
-        self.selected_category = self
-            .all_categories
-            .iter()
-            .find(|category| category.goal_id == goal)
-            .map(|category| category.id);
+    /// 选中「全部」层级：清除目标与分类过滤。
+    pub(crate) fn select_all(&mut self) {
+        self.selected_goal = None;
+        self.selected_category = None;
     }
 
-    /// 选中分类，并同步其所属目标。
+    /// 选中目标，进入「目标」层级：展示该目标下所有任务，不自动选中分类。
+    pub(crate) fn select_goal(&mut self, goal: GoalId) {
+        self.selected_goal = Some(goal);
+        self.selected_category = None;
+    }
+
+    /// 选中分类，进入「分类」层级，并同步其所属目标。
     pub(crate) fn select_category(&mut self, category: CategoryId) {
         self.selected_category = Some(category);
         if let Some(category) = self.all_categories.iter().find(|c| c.id == category) {
             self.selected_goal = Some(category.goal_id);
+        }
+    }
+
+    /// 校验当前选择仍指向存在的数据；失效时回落到更宽的层级。
+    fn normalize_selection(&mut self) {
+        let goal_valid = self
+            .selected_goal
+            .is_some_and(|goal| self.all_goals.iter().any(|g| g.id == goal));
+        if !goal_valid {
+            self.selected_goal = None;
+        }
+        let category_valid = self.selected_category.is_some_and(|category| {
+            self.all_categories
+                .iter()
+                .any(|c| c.id == category && Some(c.goal_id) == self.selected_goal)
+        });
+        if !category_valid {
+            self.selected_category = None;
+        }
+    }
+
+    /// 按当前层级过滤任务：「全部」返回所有，「目标」返回该目标下所有，「分类」返回该分类下所有。
+    pub(crate) fn filtered_tasks(&self) -> Vec<&Task> {
+        match (self.selected_goal, self.selected_category) {
+            (None, _) => self.all_tasks.iter().collect(),
+            (Some(goal), None) => self
+                .all_tasks
+                .iter()
+                .filter(|task| {
+                    self.all_categories
+                        .iter()
+                        .any(|c| c.goal_id == goal && c.id == task.category_id)
+                })
+                .collect(),
+            (Some(_), Some(category)) => self
+                .all_tasks
+                .iter()
+                .filter(|task| task.category_id == category)
+                .collect(),
         }
     }
 
@@ -414,14 +446,7 @@ impl MinActionApp {
         match self.tab {
             TodoTab::Tasks => {
                 let entity = entity.clone();
-                let tasks: Vec<&Task> = match self.selected_category {
-                    Some(category) => self
-                        .all_tasks
-                        .iter()
-                        .filter(|task| task.category_id == category)
-                        .collect(),
-                    None => self.all_tasks.iter().collect(),
-                };
+                let tasks = self.filtered_tasks();
                 div()
                     .flex()
                     .flex_col()

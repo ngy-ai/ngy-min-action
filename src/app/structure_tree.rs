@@ -18,6 +18,24 @@ impl MinActionApp {
             .border_r_1()
             .overflow_y_scroll()
             .child(div().px_3().py_2().child("结构"))
+            .child({
+                let all_entity = entity.clone();
+                let all_selected = selected_goal.is_none();
+                div()
+                    .id("struct-all")
+                    .px_3()
+                    .py_1()
+                    .rounded_md()
+                    .when(all_selected, |this| this.bg(self.palette.selected))
+                    .cursor_pointer()
+                    .child(format!("全部（{}）", self.all_tasks.len()))
+                    .on_click(move |_ev, _window, cx| {
+                        all_entity.update(cx, |this, cx| {
+                            this.select_all();
+                            cx.notify();
+                        });
+                    })
+            })
             .children(
                 self.all_goals
                     .iter()
@@ -34,7 +52,8 @@ impl MinActionApp {
                         let mut rows = vec![{
                             div()
                                 .id(format!("goal-{gi}"))
-                                .px_3()
+                                .pl_5()
+                                .pr_3()
                                 .py_1()
                                 .rounded_md()
                                 .when(goal_selected, |this| this.bg(self.palette.selected))
@@ -90,82 +109,80 @@ impl MinActionApp {
                                         )),
                                 )
                         }];
-                        if goal_selected {
-                            for (ci, category) in self
-                                .all_categories
-                                .iter()
-                                .filter(|category| category.goal_id == goal_id)
-                                .enumerate()
-                            {
-                                let category_id = category.id;
-                                let cat_selected = selected_category == Some(category_id);
-                                let cat_count =
-                                    self.task_counts.get(&category_id).copied().unwrap_or(0);
-                                let cat_select = entity_cat.clone();
-                                let cat_rename = entity_cat.clone();
-                                let cat_delete = entity_cat.clone();
-                                let cat_name = category.name.clone();
-                                rows.push(
-                                    div()
-                                        .id(format!("cat-{gi}-{ci}"))
-                                        .px_3()
-                                        .pl_6()
-                                        .py_1()
-                                        .rounded_md()
-                                        .when(cat_selected, |this| this.bg(self.palette.selected))
-                                        .flex()
-                                        .items_center()
-                                        .justify_between()
-                                        .on_click(move |_ev, _window, cx| {
-                                            cat_select.update(cx, |this, cx| {
-                                                this.select_category(category_id);
-                                                cx.notify();
-                                            });
-                                        })
-                                        .child(
-                                            div().flex_1().cursor_pointer().child(format!(
-                                                "{}（{}）",
-                                                category.name, cat_count
+                        for (ci, category) in self
+                            .all_categories
+                            .iter()
+                            .filter(|category| category.goal_id == goal_id)
+                            .enumerate()
+                        {
+                            let category_id = category.id;
+                            let cat_selected = selected_category == Some(category_id);
+                            let cat_count =
+                                self.task_counts.get(&category_id).copied().unwrap_or(0);
+                            let cat_select = entity_cat.clone();
+                            let cat_rename = entity_cat.clone();
+                            let cat_delete = entity_cat.clone();
+                            let cat_name = category.name.clone();
+                            rows.push(
+                                div()
+                                    .id(format!("cat-{gi}-{ci}"))
+                                    .pl_8()
+                                    .pr_3()
+                                    .py_1()
+                                    .rounded_md()
+                                    .when(cat_selected, |this| this.bg(self.palette.selected))
+                                    .flex()
+                                    .items_center()
+                                    .justify_between()
+                                    .on_click(move |_ev, _window, cx| {
+                                        cat_select.update(cx, |this, cx| {
+                                            this.select_category(category_id);
+                                            cx.notify();
+                                        });
+                                    })
+                                    .child(
+                                        div()
+                                            .flex_1()
+                                            .cursor_pointer()
+                                            .child(format!("{}（{}）", category.name, cat_count)),
+                                    )
+                                    .child(
+                                        div()
+                                            .flex()
+                                            .gap_1()
+                                            .child(struct_action(
+                                                "cat-rename",
+                                                "重命名",
+                                                &palette,
+                                                move |_ev, window, cx| {
+                                                    open_rename(
+                                                        cat_rename.clone(),
+                                                        StructTarget::Category(category_id),
+                                                        &cat_name,
+                                                        window,
+                                                        cx,
+                                                    );
+                                                },
+                                            ))
+                                            .child(struct_action(
+                                                "cat-delete",
+                                                "删除",
+                                                &palette,
+                                                move |_ev, window, cx| {
+                                                    let impact = cat_delete
+                                                        .read(cx)
+                                                        .category_deletion_impact(category_id);
+                                                    open_delete(
+                                                        cat_delete.clone(),
+                                                        StructTarget::Category(category_id),
+                                                        impact,
+                                                        window,
+                                                        cx,
+                                                    );
+                                                },
                                             )),
-                                        )
-                                        .child(
-                                            div()
-                                                .flex()
-                                                .gap_1()
-                                                .child(struct_action(
-                                                    "cat-rename",
-                                                    "重命名",
-                                                    &palette,
-                                                    move |_ev, window, cx| {
-                                                        open_rename(
-                                                            cat_rename.clone(),
-                                                            StructTarget::Category(category_id),
-                                                            &cat_name,
-                                                            window,
-                                                            cx,
-                                                        );
-                                                    },
-                                                ))
-                                                .child(struct_action(
-                                                    "cat-delete",
-                                                    "删除",
-                                                    &palette,
-                                                    move |_ev, window, cx| {
-                                                        let impact = cat_delete
-                                                            .read(cx)
-                                                            .category_deletion_impact(category_id);
-                                                        open_delete(
-                                                            cat_delete.clone(),
-                                                            StructTarget::Category(category_id),
-                                                            impact,
-                                                            window,
-                                                            cx,
-                                                        );
-                                                    },
-                                                )),
-                                        ),
-                                );
-                            }
+                                    ),
+                            );
                         }
                         rows.into_iter()
                     }),
