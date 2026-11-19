@@ -22,6 +22,7 @@ use crate::palette::Palette;
 use crate::store::Store;
 use gpui_kit::component::theme::{Theme, ThemeMode};
 
+mod create_dialog;
 mod delete_dialog;
 mod dialogs;
 mod frequency_dialog;
@@ -66,6 +67,8 @@ pub(crate) enum StructDialog {
     Note(Entity<note_dialog::NoteDialog>),
     /// 重置任务复习进度（遗忘曲线归零）。
     Reset(Entity<reset_dialog::ResetDialog>),
+    /// 新建目标 / 分类 / 任务。
+    Create(Entity<create_dialog::CreateDialog>),
 }
 
 /// 中央区页签。
@@ -542,6 +545,7 @@ impl Render for MinActionApp {
                     StructDialog::Storage(d) => d.into_any_element(),
                     StructDialog::Note(d) => d.into_any_element(),
                     StructDialog::Reset(d) => d.into_any_element(),
+                    StructDialog::Create(d) => d.into_any_element(),
                 };
                 this.child(modal_overlay(child, &self.palette))
             })
