@@ -43,28 +43,40 @@ fn reload_loads_goals_categories_tasks_and_counts() {
         Some(&1),
         "分类任务计数应为 1"
     );
-    assert_eq!(app.selected_goal, Some(goal), "默认应选中唯一目标");
-    assert_eq!(app.selected_category, Some(category), "默认应选中唯一分类");
+    assert_eq!(app.selected_goal, None, "默认应处于「全部」层级");
+    assert_eq!(app.selected_category, None, "默认不选中任何分类");
     assert_eq!(app.goal_task_count(goal), 1, "目标任务汇总应为 1");
 }
 
-/// 选中目标后，分类应归一化到该目标下第一个分类。
+/// 选中目标后进入「目标」层级：展示该目标下所有任务，不自动选中分类。
 #[test]
-fn select_goal_normalizes_category() {
+fn select_goal_shows_all_tasks_of_goal() {
     let store = open_temp_store("select");
     let goal1 = store.create_goal("AI", None).expect("目标1");
     let cat1 = store.create_category(goal1, "口语").expect("分类1");
+    let cat1b = store.create_category(goal1, "听力").expect("分类1b");
     let goal2 = store.create_goal("健康", None).expect("目标2");
     let cat2 = store.create_category(goal2, "运动").expect("分类2");
+    let draft = TaskDraft {
+        name: "t".to_owned(),
+        frequency: Frequency::Daily,
+        estimated_minutes: None,
+        description: None,
+    };
+    store.create_task(cat1, draft.clone()).expect("任务1");
+    store.create_task(cat1b, draft.clone()).expect("任务2");
+    store.create_task(cat2, draft).expect("任务3");
     let mut app = MinActionApp::new(store, Arc::new(SystemClock)).expect("构造根视图");
 
-    app.select_goal(goal2);
-    assert_eq!(app.selected_goal, Some(goal2), "应选中目标2");
-    assert_eq!(app.selected_category, Some(cat2), "分类应归一化到目标2下");
+    app.select_goal(goal1);
+    assert_eq!(app.selected_goal, Some(goal1), "应选中目标1");
+    assert_eq!(app.selected_category, None, "目标层级不应自动选中分类");
+    assert_eq!(app.filtered_tasks().len(), 2, "应展示目标1下全部任务");
 
     app.select_category(cat1);
     assert_eq!(app.selected_category, Some(cat1), "应选中分类1");
     assert_eq!(app.selected_goal, Some(goal1), "所属目标应同步为目标1");
+    assert_eq!(app.filtered_tasks().len(), 1, "分类层级只展示该分类任务");
 }
 
 /// 切换页签应更新当前 tab 状态。
@@ -77,6 +89,24 @@ fn switch_tab_updates_state() {
     assert_eq!(app.tab, TodoTab::Tasks, "默认应为任务页");
     app.switch_tab(TodoTab::History);
     assert_eq!(app.tab, TodoTab::History, "应切换到历史页");
+}
+
+/// 菜单栏下拉：点击同一项收起，点击另一项切换，显式关闭后为空。
+#[test]
+fn menu_dropdown_toggles_and_closes() {
+    let store = open_temp_store("menu");
+    let _goal = store.create_goal("AI", None).expect("目标");
+    let mut app = MinActionApp::new(store, Arc::new(SystemClock)).expect("构造根视图");
+
+    assert_eq!(app.open_menu, None, "初始不应展开下拉");
+    app.toggle_menu(crate::app::MenuKind::Edit);
+    assert_eq!(app.open_menu, Some(crate::app::MenuKind::Edit));
+    app.toggle_menu(crate::app::MenuKind::Edit);
+    assert_eq!(app.open_menu, None, "再次点击同一项应收起");
+    app.toggle_menu(crate::app::MenuKind::Theme);
+    assert_eq!(app.open_menu, Some(crate::app::MenuKind::Theme));
+    app.close_menu();
+    assert_eq!(app.open_menu, None, "关闭后应无展开项");
 }
 
 /// 删除目标的影响范围应汇总其下分类与任务数。
@@ -117,6 +147,73 @@ fn category_deletion_impact_counts_tasks() {
     let impact = app.category_deletion_impact(cat);
     assert_eq!(impact.categories, 0, "分类删除不影响其他分类");
     assert_eq!(impact.tasks, 1, "应波及 1 条任务");
+}
+
+/// 「全部 / 目标 / 分类」三级选择应逐级收窄任务列表。
+#[test]
+fn three_level_selection_filters_tasks() {
+    let store = open_temp_store("levels");
+    let g1 = store.create_goal("G1", None).expect("目标1");
+    let c1 = store.create_category(g1, "C1").expect("分类1");
+    let c2 = store.create_category(g1, "C2").expect("分类2");
+    let g2 = store.create_goal("G2", None).expect("目标2");
+    let c3 = store.create_category(g2, "C3").expect("分类3");
+    let draft = TaskDraft {
+        name: "t".to_owned(),
+        frequency: Frequency::Daily,
+        estimated_minutes: None,
+        description: None,
+    };
+    store.create_task(c1, draft.clone()).expect("任务1");
+    store.create_task(c2, draft.clone()).expect("任务2");
+    store.create_task(c3, draft).expect("任务3");
+    let mut app = MinActionApp::new(store, Arc::new(SystemClock)).expect("构造根视图");
+
+    assert_eq!(app.filtered_tasks().len(), 3, "默认「全部」应展示所有任务");
+    app.select_goal(g2);
+    assert_eq!(
+        app.filtered_tasks().len(),
+        1,
+        "「目标」层级只展示该目标任务"
+    );
+    app.select_category(c3);
+    assert_eq!(
+        app.filtered_tasks().len(),
+        1,
+        "「分类」层级只展示该分类任务"
+    );
+    app.select_all();
+    assert_eq!(app.selected_goal, None, "「全部」应清除目标选择");
+    assert_eq!(app.selected_category, None, "「全部」应清除分类选择");
+    assert_eq!(app.filtered_tasks().len(), 3, "「全部」应恢复所有任务");
+}
+
+/// 删除选中目标并重载后，选择应回落到「全部」而非指向已删除对象。
+#[test]
+fn reload_drops_selection_of_deleted_goal() {
+    let store = open_temp_store("stale");
+    let g1 = store.create_goal("G1", None).expect("目标1");
+    let c1 = store.create_category(g1, "C1").expect("分类1");
+    let g2 = store.create_goal("G2", None).expect("目标2");
+    let c2 = store.create_category(g2, "C2").expect("分类2");
+    let draft = TaskDraft {
+        name: "t".to_owned(),
+        frequency: Frequency::Daily,
+        estimated_minutes: None,
+        description: None,
+    };
+    store.create_task(c1, draft.clone()).expect("任务1");
+    store.create_task(c2, draft).expect("任务2");
+    let mut app = MinActionApp::new(store, Arc::new(SystemClock)).expect("构造根视图");
+
+    app.select_category(c1);
+    let store = app.store.clone();
+    store.delete_goal(g1).expect("删除目标1");
+    app.reload().expect("重载应成功");
+
+    assert_eq!(app.selected_goal, None, "失效目标应回落全部");
+    assert_eq!(app.selected_category, None, "失效分类应清空");
+    assert_eq!(app.filtered_tasks().len(), 1, "应展示剩余任务");
 }
 
 /// 切换/载入今日页应生成当天「最小行动」列表（默认每日上限 5）。
