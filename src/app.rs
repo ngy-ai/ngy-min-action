@@ -14,6 +14,7 @@ use gpui_kit::*;
 
 use crate::clock::Clock;
 use crate::common::{DAILY_CAP_DEFAULT, HISTORY_PAGE_SIZE};
+use crate::config::Bootstrap;
 use crate::model::{
     Action, ActionId, ActionStatus, Category, CategoryId, DeletionImpact, Goal, GoalId, Task,
     ThemeChoice,
@@ -22,6 +23,7 @@ use crate::palette::Palette;
 use crate::store::Store;
 use gpui_kit::component::theme::{Theme, ThemeMode};
 
+mod config_dialog;
 mod create_dialog;
 mod delete_dialog;
 mod dialogs;
@@ -61,14 +63,23 @@ pub(crate) enum StructDialog {
     Frequency(Entity<frequency_dialog::FrequencyDialog>),
     /// 复习统计展示。
     Stats(Entity<stats_dialog::StatsDialog>),
-    /// 存储目录与占用展示。
-    Storage(Entity<storage_dialog::StorageDialog>),
     /// 行动备注（左右两栏：来源任务 / 当前备注）。
     Note(Entity<note_dialog::NoteDialog>),
     /// 重置任务复习进度（遗忘曲线归零）。
     Reset(Entity<reset_dialog::ResetDialog>),
     /// 新建目标 / 分类 / 任务。
     Create(Entity<create_dialog::CreateDialog>),
+    /// 统一配置窗口（每日上限 / 存储地址）。
+    Config(Entity<config_dialog::ConfigDialog>),
+}
+
+/// 菜单栏当前展开的下拉。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum MenuKind {
+    /// 编辑：新建目标 / 分类 / 任务。
+    Edit,
+    /// 主题：跟随系统 / 浅色 / 深色。
+    Theme,
 }
 
 /// 中央区页签。
@@ -97,6 +108,8 @@ impl TodoTab {
 pub struct MinActionApp {
     store: Arc<Store>,
     clock: Arc<dyn Clock>,
+    /// 启动目录解析器，供存储地址迁移使用。
+    pub(crate) bootstrap: Bootstrap,
 
     /// 全部目标，供结构树渲染。
     pub(crate) all_goals: Vec<Goal>,
@@ -112,6 +125,8 @@ pub struct MinActionApp {
     pub(crate) selected_category: Option<CategoryId>,
     /// 当前中央区页签。
     pub(crate) tab: TodoTab,
+    /// 菜单栏当前展开的下拉；`None` 表示都未展开。
+    pub(crate) open_menu: Option<MenuKind>,
     /// 当前打开的任务内容编辑器；`None` 表示未打开。
     pub(crate) editing: Option<Entity<task_editor::TaskEditor>>,
     /// 当前打开的结构树对话框（重命名/删除/频率/统计/存储）；`None` 表示未打开。
@@ -133,11 +148,21 @@ pub struct MinActionApp {
 }
 
 impl MinActionApp {
-    /// 构造根视图状态；数据层已就绪，构造时即载入一次。
+    /// 构造根视图状态；默认启动目录，构造时即载入一次。
     pub fn new(store: Store, clock: Arc<dyn Clock>) -> Result<Self> {
+        Self::with_bootstrap(store, clock, Bootstrap::system())
+    }
+
+    /// 注入启动目录解析器构造根视图，供需要自定义数据位置的场景使用。
+    pub fn with_bootstrap(
+        store: Store,
+        clock: Arc<dyn Clock>,
+        bootstrap: Bootstrap,
+    ) -> Result<Self> {
         let mut app = Self {
             store: Arc::new(store),
             clock,
+            bootstrap,
             all_goals: Vec::new(),
             all_categories: Vec::new(),
             all_tasks: Vec::new(),
@@ -145,6 +170,7 @@ impl MinActionApp {
             selected_goal: None,
             selected_category: None,
             tab: TodoTab::Tasks,
+            open_menu: None,
             editing: None,
             dialog: None,
             today_actions: Vec::new(),
@@ -270,6 +296,28 @@ impl MinActionApp {
     /// 切换到指定中央区页签。
     pub(crate) fn switch_tab(&mut self, tab: TodoTab) {
         self.tab = tab;
+    }
+
+    /// 切换菜单栏下拉：同一项收起，不同项切换。
+    pub(crate) fn toggle_menu(&mut self, menu: MenuKind) {
+        self.open_menu = if self.open_menu == Some(menu) {
+            None
+        } else {
+            Some(menu)
+        };
+    }
+
+    /// 关闭菜单栏下拉。
+    pub(crate) fn close_menu(&mut self) {
+        self.open_menu = None;
+    }
+
+    /// 用迁移后的新连接替换数据层并重载界面。
+    pub(crate) fn replace_store(&mut self, store: Arc<Store>) -> Result<()> {
+        self.store = store;
+        self.reload()?;
+        self.load_history_first()?;
+        Ok(())
     }
 
     /// 选中「全部」层级：清除目标与分类过滤。
@@ -542,10 +590,10 @@ impl Render for MinActionApp {
                     StructDialog::Delete(d) => d.into_any_element(),
                     StructDialog::Frequency(d) => d.into_any_element(),
                     StructDialog::Stats(d) => d.into_any_element(),
-                    StructDialog::Storage(d) => d.into_any_element(),
                     StructDialog::Note(d) => d.into_any_element(),
                     StructDialog::Reset(d) => d.into_any_element(),
                     StructDialog::Create(d) => d.into_any_element(),
+                    StructDialog::Config(d) => d.into_any_element(),
                 };
                 this.child(modal_overlay(child, &self.palette))
             })

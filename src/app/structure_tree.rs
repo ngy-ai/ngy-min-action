@@ -19,82 +19,6 @@ impl MinActionApp {
             .overflow_y_scroll()
             .child(div().px_3().py_2().child("结构"))
             .child({
-                let goal_root = entity.clone();
-                let category_root = entity.clone();
-                let task_root = entity.clone();
-                let goal_scope = selected_goal.or_else(|| self.all_goals.first().map(|g| g.id));
-                let category_scope =
-                    selected_category.or_else(|| self.all_categories.first().map(|c| c.id));
-                let goal_label = goal_scope
-                    .and_then(|id| self.all_goals.iter().find(|goal| goal.id == id))
-                    .map(|goal| format!("归属：{}", goal.name))
-                    .unwrap_or_else(|| "请先创建目标".to_owned());
-                let category_label = category_scope
-                    .and_then(|id| self.all_categories.iter().find(|c| c.id == id))
-                    .map(|category| format!("归属：{}", category.name))
-                    .unwrap_or_else(|| "请先创建目标与分类".to_owned());
-
-                div()
-                    .id("create-actions")
-                    .px_3()
-                    .pb_2()
-                    .flex()
-                    .gap_2()
-                    .child(create_action(
-                        "add-goal",
-                        "+ 目标",
-                        &palette,
-                        move |window, cx| {
-                            goal_root.update(cx, |root, cx| {
-                                let app_entity = cx.entity();
-                                root.open_create(
-                                    create_dialog::CreateKind::Goal,
-                                    "新建目标".to_owned(),
-                                    app_entity,
-                                    window,
-                                    cx,
-                                );
-                            });
-                        },
-                    ))
-                    .child(create_action(
-                        "add-category",
-                        "+ 分类",
-                        &palette,
-                        move |window, cx| {
-                            category_root.update(cx, |root, cx| {
-                                let app_entity = cx.entity();
-                                root.open_create(
-                                    create_dialog::CreateKind::Category { goal: goal_scope },
-                                    goal_label.clone(),
-                                    app_entity,
-                                    window,
-                                    cx,
-                                );
-                            });
-                        },
-                    ))
-                    .child(create_action(
-                        "add-task",
-                        "+ 任务",
-                        &palette,
-                        move |window, cx| {
-                            task_root.update(cx, |root, cx| {
-                                let app_entity = cx.entity();
-                                root.open_create(
-                                    create_dialog::CreateKind::Task {
-                                        category: category_scope,
-                                    },
-                                    category_label.clone(),
-                                    app_entity,
-                                    window,
-                                    cx,
-                                );
-                            });
-                        },
-                    ))
-            })
-            .child({
                 let all_entity = entity.clone();
                 let all_selected = selected_goal.is_none();
                 div()
@@ -264,25 +188,6 @@ impl MinActionApp {
                     }),
             )
     }
-}
-
-/// 结构树顶部的「新建」按钮。
-fn create_action(
-    id: &'static str,
-    label: &'static str,
-    palette: &Palette,
-    handler: impl Fn(&mut Window, &mut App) + 'static,
-) -> impl IntoElement {
-    div()
-        .id(id)
-        .px_2()
-        .py_1()
-        .rounded_md()
-        .bg(palette.inactive_pill)
-        .text_size(px(11.))
-        .cursor_pointer()
-        .child(label)
-        .on_click(move |_ev, window, cx| handler(window, cx))
 }
 
 /// 结构树每行右侧的小操作按钮（重命名/删除）。

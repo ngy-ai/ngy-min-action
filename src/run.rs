@@ -44,7 +44,7 @@ pub(crate) fn run() -> Result<()> {
     );
     let clock: Arc<dyn Clock> = Arc::new(SystemClock);
 
-    let app = MinActionApp::new(store, clock)?;
+    let app = MinActionApp::with_bootstrap(store, clock, bootstrap)?;
     info!(
         op = "startup",
         result = "ok",

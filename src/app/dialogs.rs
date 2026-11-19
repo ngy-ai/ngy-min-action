@@ -8,12 +8,34 @@ use tracing::error;
 use super::note_dialog::NoteContext;
 use super::task_editor::TaskEditor;
 use super::{
-    MinActionApp, StructDialog, create_dialog, frequency_dialog, note_dialog, reset_dialog,
-    stats_dialog, storage_dialog,
+    MinActionApp, StructDialog, config_dialog, create_dialog, frequency_dialog, note_dialog,
+    reset_dialog, stats_dialog,
 };
 use crate::model::{ActionId, Frequency, TaskId};
 
 impl MinActionApp {
+    /// 打开统一配置窗口：定位到指定 Tab。
+    pub(crate) fn open_config(
+        &mut self,
+        tab: config_dialog::ConfigTab,
+        root: Entity<MinActionApp>,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        let dialog = cx.new(|c| {
+            config_dialog::ConfigDialog::new(
+                tab,
+                self.store.clone(),
+                self.bootstrap.clone(),
+                root.clone(),
+                window,
+                c,
+            )
+        });
+        self.dialog = Some(StructDialog::Config(dialog));
+        cx.notify(root.entity_id());
+    }
+
     /// 打开新建对话框：按层级与归属构造实体并挂到根视图。
     pub(crate) fn open_create(
         &mut self,
@@ -73,19 +95,6 @@ impl MinActionApp {
         };
         let dialog = cx.new(|_c| stats_dialog::StatsDialog::new(stats, root.clone()));
         self.dialog = Some(StructDialog::Stats(dialog));
-        cx.notify(root.entity_id());
-    }
-
-    /// 打开存储对话框：从数据目录递归算出占用后构造对话框挂在根视图。
-    pub(crate) fn open_storage(
-        &mut self,
-        root: Entity<MinActionApp>,
-        _window: &mut Window,
-        cx: &mut App,
-    ) {
-        let info = storage_dialog::collect_storage(self.store.data_dir());
-        let dialog = cx.new(|_c| storage_dialog::StorageDialog::new(info, root.clone()));
-        self.dialog = Some(StructDialog::Storage(dialog));
         cx.notify(root.entity_id());
     }
 

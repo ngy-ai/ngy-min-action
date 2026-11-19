@@ -91,6 +91,24 @@ fn switch_tab_updates_state() {
     assert_eq!(app.tab, TodoTab::History, "应切换到历史页");
 }
 
+/// 菜单栏下拉：点击同一项收起，点击另一项切换，显式关闭后为空。
+#[test]
+fn menu_dropdown_toggles_and_closes() {
+    let store = open_temp_store("menu");
+    let _goal = store.create_goal("AI", None).expect("目标");
+    let mut app = MinActionApp::new(store, Arc::new(SystemClock)).expect("构造根视图");
+
+    assert_eq!(app.open_menu, None, "初始不应展开下拉");
+    app.toggle_menu(crate::app::MenuKind::Edit);
+    assert_eq!(app.open_menu, Some(crate::app::MenuKind::Edit));
+    app.toggle_menu(crate::app::MenuKind::Edit);
+    assert_eq!(app.open_menu, None, "再次点击同一项应收起");
+    app.toggle_menu(crate::app::MenuKind::Theme);
+    assert_eq!(app.open_menu, Some(crate::app::MenuKind::Theme));
+    app.close_menu();
+    assert_eq!(app.open_menu, None, "关闭后应无展开项");
+}
+
 /// 删除目标的影响范围应汇总其下分类与任务数。
 #[test]
 fn goal_deletion_impact_sums_categories_and_tasks() {
