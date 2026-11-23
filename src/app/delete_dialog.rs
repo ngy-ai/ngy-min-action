@@ -10,6 +10,8 @@ use crate::palette::Palette;
 use gpui::{App, Context, Entity, Render, Window};
 use gpui_kit::*;
 
+use super::style::{SurfaceExt, TEXT_MD, Tone, dialog_title};
+
 use crate::app::MinActionApp;
 use crate::app::StructTarget;
 use crate::model::DeletionImpact;
@@ -56,30 +58,33 @@ impl Render for DeleteDialog {
             .gap_3()
             .p_4()
             .w(px(360.))
-            .child(div().text_size(px(18.)).child("删除确认"))
-            .child(div().child(format!(
-                "将一并删除 {} 个分类、{} 条任务（已完成的行动与结算记录保留）。",
-                impact.categories, impact.tasks
-            )))
+            .child(dialog_title("删除确认"))
+            .child(
+                div()
+                    .text_size(TEXT_MD)
+                    .text_color(p.text_muted2)
+                    .child(format!(
+                        "将一并删除 {} 个分类、{} 条任务（已完成的行动与结算记录保留）。",
+                        impact.categories, impact.tasks
+                    )),
+            )
             .child(
                 div()
                     .flex()
                     .gap_2()
                     .justify_end()
-                    .child(cancel_button(root.clone()))
+                    .child(cancel_button(root.clone(), &p))
                     .child(confirm_button(target, store, root, &p)),
             )
     }
 }
 
 /// 「取消」按钮：仅关闭对话框。
-fn cancel_button(root: Entity<MinActionApp>) -> impl IntoElement {
+fn cancel_button(root: Entity<MinActionApp>, palette: &Palette) -> impl IntoElement {
     div()
         .id("delete-cancel")
+        .tone_button(palette, Tone::Neutral)
         .px_3()
-        .py_1()
-        .cursor_pointer()
-        .rounded_md()
         .child("取消")
         .on_click(move |_ev, _window, cx| {
             root.update(cx, |root, cx| {
@@ -98,11 +103,8 @@ fn confirm_button(
 ) -> impl IntoElement {
     div()
         .id("delete-confirm")
+        .tone_button(palette, Tone::Danger)
         .px_3()
-        .py_1()
-        .cursor_pointer()
-        .rounded_md()
-        .bg(palette.danger)
         .child("删除")
         .on_click(move |_ev, _window, cx| {
             let result = match target {

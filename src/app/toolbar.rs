@@ -1,16 +1,15 @@
-//! 顶部菜单栏 / 工具栏 / 底部状态栏渲染与对应按钮。
+//! 顶部菜单栏 / 底部状态栏渲染与对应入口。
 //!
-//! 这些 `MinActionApp` 方法只负责渲染；变更经 `set_daily_cap` / `set_theme` 等写回数据层，
-//! 主题切换同时经 `apply_theme_choice` 立即应用 gpui-kit 主题。
+//! 菜单栏提供「编辑」（新建目标/分类/任务、首选项），以及中央区的四个页签
+//! （任务 / 今日待办 / 历史待办 / 统计）；主题在配置窗口里切换。
 
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 
-use super::MinActionApp;
-use super::WINDOW_TITLE;
-use super::apply_theme_choice;
-use crate::common::{DAILY_CAP_MAX, DAILY_CAP_MIN};
-use crate::model::ThemeChoice;
+use super::config_dialog::ConfigTab;
+use super::create_dialog::CreateKind;
+use super::style::{SurfaceExt, TEXT_LG, TEXT_XS};
+use super::{MinActionApp, TodoTab, WINDOW_TITLE, theme_label};
 use crate::palette::Palette;
 
 impl MinActionApp {
@@ -21,82 +20,99 @@ impl MinActionApp {
             .flex()
             .items_center()
             .justify_between()
-            .px_2()
-            .py_1()
+            .px_3()
+            .py_2()
             .border_b_1()
             .bg(self.palette.surface)
             .child(
                 div()
-                    .font_weight(gpui_kit::FontWeight::BOLD)
-                    .child(WINDOW_TITLE),
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .child(
+                        div()
+                            .w(px(20.))
+                            .h(px(20.))
+                            .rounded_md()
+                            .bg(self.palette.accent)
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .child(
+                                div()
+                                    .text_size(TEXT_XS)
+                                    .text_color(self.palette.accent_fg)
+                                    .child("✓"),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .text_size(TEXT_LG)
+                            .font_weight(gpui_kit::FontWeight::BOLD)
+                            .child(WINDOW_TITLE),
+                    ),
             )
             .child(
                 div()
-                    .text_size(px(11.))
+                    .text_size(TEXT_XS)
                     .text_color(self.palette.text_muted)
                     .child("gpui-kit 迁移版"),
             )
     }
 
-    /// 渲染工具栏：每日上限步进、主题切换、统计与存储入口。
+    /// 渲染菜单栏：编辑（新建 / 首选项）与四个页签。
     pub(crate) fn render_toolbar(&self, entity: Entity<MinActionApp>) -> impl IntoElement {
-        let cap = self.daily_cap;
-        let theme = self.theme_choice;
+        let p = self.palette;
+        let open = self.menu_open;
+        let goal_scope = self
+            .selected_goal
+            .or_else(|| self.all_goals.first().map(|goal| goal.id));
+        let category_scope = self
+            .selected_category
+            .or_else(|| self.all_categories.first().map(|category| category.id));
+        let goal_label = goal_scope
+            .and_then(|id| self.all_goals.iter().find(|goal| goal.id == id))
+            .map(|goal| format!("归属：{}", goal.name))
+            .unwrap_or_else(|| "请先创建目标".to_owned());
+        let category_label = category_scope
+            .and_then(|id| self.all_categories.iter().find(|c| c.id == id))
+            .map(|c| format!("归属：{}", c.name))
+            .unwrap_or_else(|| "请先创建目标与分类".to_owned());
+
         div()
             .id("toolbar")
+            .relative()
             .flex()
             .items_center()
-            .gap_4()
-            .px_2()
-            .py_1()
+            .gap_2()
+            .px_3()
+            .py_2()
             .border_b_1()
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_1()
-                    .child(div().child("每日上限"))
-                    .child(cap_button(
-                        entity.clone(),
-                        "cap-dec",
-                        "−",
-                        cap.saturating_sub(1).max(DAILY_CAP_MIN),
-                        &self.palette,
-                    ))
-                    .child(div().min_w(px(18.)).text_center().child(cap.to_string()))
-                    .child(cap_button(
-                        entity.clone(),
-                        "cap-inc",
-                        "+",
-                        cap.saturating_add(1).min(DAILY_CAP_MAX),
-                        &self.palette,
-                    )),
+            .bg(p.surface)
+            .child(menu_trigger(entity.clone(), "menu-edit", "编辑", open, &p))
+            .child(divider(&p))
+            .children(
+                [
+                    TodoTab::Tasks,
+                    TodoTab::Today,
+                    TodoTab::History,
+                    TodoTab::Stats,
+                ]
+                .into_iter()
+                .map(|tab| tab_button(entity.clone(), tab, self.tab, &p)),
             )
-            .child(self.theme_selector(entity.clone(), theme, &self.palette))
-            .child(stats_button(entity.clone()))
-            .child(storage_button(entity.clone()))
-    }
-
-    /// 渲染主题切换三段：跟随系统 / 浅色 / 深色，当前偏好高亮。
-    pub(crate) fn theme_selector(
-        &self,
-        entity: Entity<MinActionApp>,
-        current: ThemeChoice,
-        palette: &Palette,
-    ) -> impl IntoElement {
-        let choices = [
-            (ThemeChoice::System, "跟随系统"),
-            (ThemeChoice::Light, "浅色"),
-            (ThemeChoice::Dark, "深色"),
-        ];
-        div()
-            .flex()
-            .items_center()
-            .gap_1()
-            .child(div().child("主题"))
-            .children(choices.into_iter().map(move |(choice, label)| {
-                theme_button(entity.clone(), choice, label, choice == current, palette)
-            }))
+            // 下拉必须包在 `deferred` 里：它按绝对定位盖住下方区域，但工具栏本身比
+            // 结构树与内容区先绘制，直接挂子节点会被后绘制的面板整块遮住（只剩一条边）。
+            .when(open, |this| {
+                this.child(deferred(edit_dropdown(
+                    entity.clone(),
+                    goal_scope,
+                    goal_label.clone(),
+                    category_scope,
+                    category_label.clone(),
+                    &p,
+                )))
+            })
     }
 
     /// 渲染底部状态栏：每日上限、主题、今日完成进度、历史条数。
@@ -107,114 +123,196 @@ impl MinActionApp {
             .filter(|a| a.status.is_settled())
             .count();
         let total = self.today_actions.len();
-        let theme_label = match self.theme_choice {
-            ThemeChoice::System => "跟随系统",
-            ThemeChoice::Light => "浅色",
-            ThemeChoice::Dark => "深色",
+        let progress = if total == 0 {
+            0.
+        } else {
+            done as f32 / total as f32
         };
+        let palette = self.palette;
         div()
             .id("status-bar")
             .flex()
             .items_center()
-            .gap_4()
-            .px_2()
-            .py_1()
+            .gap_3()
+            .px_4()
+            .py_2()
             .border_t_1()
-            .text_size(px(11.))
-            .text_color(self.palette.text_muted)
+            .bg(palette.status_bar)
+            .text_size(TEXT_XS)
+            .text_color(palette.text_muted)
             .child(format!("每日上限 {}", self.daily_cap))
-            .child(format!("主题 {theme_label}"))
+            .child(divider(&palette))
+            .child(format!("主题 {}", theme_label(self.theme_choice)))
+            .child(divider(&palette))
             .child(format!("今日 完成 {done}/{total}"))
+            .child(
+                div()
+                    .w(px(96.))
+                    .h(px(4.))
+                    .rounded_full()
+                    .bg(palette.inactive_pill)
+                    .child(
+                        div()
+                            .h_full()
+                            .w(px(96.) * progress)
+                            .rounded_full()
+                            .bg(palette.success),
+                    ),
+            )
+            .child(divider(&palette))
             .child(format!("历史 {}", self.history_actions.len()))
     }
 }
 
-/// 工具栏「统计」入口：打开复习统计对话框（顺带为 T015 工具栏铺底）。
-pub(crate) fn stats_button(app: Entity<MinActionApp>) -> impl IntoElement {
-    div()
-        .id("open-stats")
-        .px_2()
-        .py_1()
-        .cursor_pointer()
-        .rounded_md()
-        .text_size(px(12.))
-        .child("统计")
-        .on_click(move |_ev, window, cx| {
-            app.update(cx, |root, cx| {
-                let app_entity = cx.entity().clone();
-                root.open_stats(app_entity, window, cx);
-                cx.notify();
-            });
-        })
-}
-
-/// 工具栏「存储」入口：打开存储对话框（顺带为 T015 工具栏铺底）。
-pub(crate) fn storage_button(app: Entity<MinActionApp>) -> impl IntoElement {
-    div()
-        .id("open-storage")
-        .px_2()
-        .py_1()
-        .cursor_pointer()
-        .rounded_md()
-        .text_size(px(12.))
-        .child("存储")
-        .on_click(move |_ev, window, cx| {
-            app.update(cx, |root, cx| {
-                let app_entity = cx.entity().clone();
-                root.open_storage(app_entity, window, cx);
-                cx.notify();
-            });
-        })
-}
-
-/// 工具栏「每日上限」步进按钮：点击经 `set_daily_cap` 写库并刷新今日列表。
-pub(crate) fn cap_button(
+/// 顶层菜单项：点击展开 / 收起下拉。
+fn menu_trigger(
     app: Entity<MinActionApp>,
     id: &'static str,
     label: &'static str,
-    target: u8,
-    palette: &Palette,
+    open: bool,
+    p: &Palette,
 ) -> impl IntoElement {
     div()
         .id(id)
-        .px_2()
-        .py_0()
-        .cursor_pointer()
-        .rounded_md()
-        .bg(palette.inactive_pill)
-        .text_size(px(12.))
-        .child(label)
+        .soft_button(p, open)
+        .child(format!("{label} ▾"))
         .on_click(move |_ev, _window, cx| {
             app.update(cx, |root, cx| {
-                let _ = root.set_daily_cap(target);
+                root.toggle_menu();
                 cx.notify();
             });
         })
 }
 
-/// 工具栏「主题」单选项：点击经 `set_theme` 持久化并立即应用 gpui 主题。
-pub(crate) fn theme_button(
+/// 工具栏里的页签按钮：切换中央区显示任务 / 今日待办 / 历史待办 / 统计。
+fn tab_button(
     app: Entity<MinActionApp>,
-    choice: ThemeChoice,
-    label: &'static str,
-    active: bool,
-    palette: &Palette,
+    tab: TodoTab,
+    current: TodoTab,
+    p: &Palette,
 ) -> impl IntoElement {
     div()
-        .id(format!("theme-{}", choice.as_str()))
-        .px_2()
-        .py_0()
-        .cursor_pointer()
-        .rounded_md()
-        .when(active, |this| this.bg(palette.active_pill))
-        .when(!active, |this| this.bg(palette.inactive_pill))
-        .text_size(px(12.))
-        .child(label)
-        .on_click(move |_ev, window, cx| {
-            apply_theme_choice(choice, window, cx);
+        .id(format!("tab-{}", tab.label()))
+        .soft_button(p, tab == current)
+        .child(tab.label())
+        .on_click(move |_ev, _window, cx| {
             app.update(cx, |root, cx| {
-                let _ = root.set_theme(choice);
+                if let Err(error) = root.switch_tab(tab) {
+                    tracing::error!("切换页签失败：{error:#}");
+                }
                 cx.notify();
             });
         })
+}
+
+/// 「编辑」下拉：新建目标 / 分类 / 任务，以及首选项。
+fn edit_dropdown(
+    app: Entity<MinActionApp>,
+    goal_scope: Option<crate::model::GoalId>,
+    goal_label: String,
+    category_scope: Option<crate::model::CategoryId>,
+    category_label: String,
+    p: &Palette,
+) -> impl IntoElement {
+    div()
+        .id("edit-dropdown")
+        .absolute()
+        .top(px(34.))
+        .left(px(8.))
+        .flex()
+        .flex_col()
+        .min_w(px(180.))
+        .p_1()
+        .surface_card(p)
+        .shadow_lg()
+        .child(dropdown_item("edit-add-goal", "添加目标", p, false, {
+            let app = app.clone();
+            move |window, cx| {
+                app.update(cx, |root, cx| {
+                    root.close_menu();
+                    let entity = cx.entity();
+                    root.open_create(CreateKind::Goal, "新建目标".to_owned(), entity, window, cx);
+                });
+            }
+        }))
+        .child(dropdown_item(
+            "edit-add-category",
+            "添加分类",
+            p,
+            false,
+            {
+                let app = app.clone();
+                move |window, cx| {
+                    app.update(cx, |root, cx| {
+                        root.close_menu();
+                        let entity = cx.entity();
+                        root.open_create(
+                            CreateKind::Category { goal: goal_scope },
+                            goal_label.clone(),
+                            entity,
+                            window,
+                            cx,
+                        );
+                    });
+                }
+            },
+        ))
+        .child(dropdown_item("edit-add-task", "添加任务", p, false, {
+            let app = app.clone();
+            move |window, cx| {
+                app.update(cx, |root, cx| {
+                    root.close_menu();
+                    let entity = cx.entity();
+                    root.open_create(
+                        CreateKind::Task {
+                            category: category_scope,
+                        },
+                        category_label.clone(),
+                        entity,
+                        window,
+                        cx,
+                    );
+                });
+            }
+        }))
+        .child(menu_separator(p))
+        .child(dropdown_item("edit-preferences", "首选项", p, false, {
+            let app = app.clone();
+            move |window, cx| {
+                app.update(cx, |root, cx| {
+                    root.close_menu();
+                    let entity = cx.entity();
+                    root.open_config(ConfigTab::DailyCap, entity, window, cx);
+                });
+            }
+        }))
+}
+
+/// 工具栏 / 状态栏中的竖直分隔线。
+fn divider(palette: &Palette) -> Div {
+    div()
+        .w(px(1.))
+        .h(px(16.))
+        .flex_shrink_0()
+        .bg(palette.border)
+}
+
+/// 下拉菜单内的可点击项；`active` 用于标记当前选中项。
+fn dropdown_item(
+    id: impl Into<ElementId>,
+    label: &'static str,
+    p: &Palette,
+    active: bool,
+    action: impl Fn(&mut Window, &mut App) + 'static,
+) -> impl IntoElement {
+    div()
+        .id(id.into())
+        .soft_button(p, active)
+        .child(label)
+        .on_click(move |_ev, window, cx| action(window, cx))
+}
+
+/// 下拉菜单内的横向分隔线。
+fn menu_separator(p: &Palette) -> Div {
+    div().h(px(1.)).mx_1().my_1().bg(p.border)
 }

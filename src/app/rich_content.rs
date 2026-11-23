@@ -86,7 +86,7 @@ pub fn extract_links(text: &str) -> Vec<RichLink> {
 
 /// 把富文本渲染为可点击链接与文字混排的元素：整段文字原样显示，
 /// 抽出的链接作为可点击行单独列出（点击经 `cx.open_url` 打开）。
-pub fn render_rich_text(text: &str) -> impl IntoElement {
+pub fn render_rich_text(text: &str, palette: &crate::palette::Palette) -> impl IntoElement {
     let links = extract_links(text);
     div()
         .flex()
@@ -103,7 +103,7 @@ pub fn render_rich_text(text: &str) -> impl IntoElement {
                         let url = link.url.clone();
                         div()
                             .id(("rich-link", idx))
-                            .text_color(rgb(0x33_99_ff))
+                            .text_color(palette.link)
                             .underline()
                             .cursor_pointer()
                             .on_click(move |_ev, _window, cx| {

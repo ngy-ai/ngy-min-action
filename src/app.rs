@@ -14,14 +14,19 @@ use gpui_kit::*;
 
 use crate::clock::Clock;
 use crate::common::{DAILY_CAP_DEFAULT, HISTORY_PAGE_SIZE};
+use crate::config::Bootstrap;
 use crate::model::{
-    Action, ActionId, ActionStatus, Category, CategoryId, DeletionImpact, Goal, GoalId, Task,
-    ThemeChoice,
+    Action, ActionId, ActionStatus, Category, CategoryId, DeletionImpact, Goal, GoalId,
+    ReviewStats, Task, ThemeChoice,
 };
 use crate::palette::Palette;
 use crate::store::Store;
 use gpui_kit::component::theme::{Theme, ThemeMode};
 
+use self::style::{GAP_SM, GAP_XS, SCRIM, SurfaceExt, TEXT_MD, TEXT_XS, empty_state, page_heading};
+
+mod config_dialog;
+mod create_dialog;
 mod delete_dialog;
 mod dialogs;
 mod frequency_dialog;
@@ -30,9 +35,10 @@ mod note_dialog;
 mod rename_dialog;
 mod reset_dialog;
 mod rich_content;
-mod stats_dialog;
+mod stats_view;
 mod storage_dialog;
 mod structure_tree;
+mod style;
 mod task_editor;
 mod today_view;
 mod toolbar;
@@ -58,14 +64,14 @@ pub(crate) enum StructDialog {
     Delete(Entity<delete_dialog::DeleteDialog>),
     /// 编辑任务频率。
     Frequency(Entity<frequency_dialog::FrequencyDialog>),
-    /// 复习统计展示。
-    Stats(Entity<stats_dialog::StatsDialog>),
-    /// 存储目录与占用展示。
-    Storage(Entity<storage_dialog::StorageDialog>),
     /// 行动备注（左右两栏：来源任务 / 当前备注）。
     Note(Entity<note_dialog::NoteDialog>),
     /// 重置任务复习进度（遗忘曲线归零）。
     Reset(Entity<reset_dialog::ResetDialog>),
+    /// 新建目标 / 分类 / 任务。
+    Create(Entity<create_dialog::CreateDialog>),
+    /// 统一配置窗口（每日上限 / 存储地址 / 主题）。
+    Config(Entity<config_dialog::ConfigDialog>),
 }
 
 /// 中央区页签。
@@ -77,6 +83,8 @@ pub enum TodoTab {
     Today,
     /// 今天之前的历史待办。
     History,
+    /// 复习统计：窗口分项、连续达成与任务进度。
+    Stats,
 }
 
 impl TodoTab {
@@ -86,6 +94,7 @@ impl TodoTab {
             TodoTab::Tasks => "任务",
             TodoTab::Today => "今日待办",
             TodoTab::History => "历史待办",
+            TodoTab::Stats => "统计",
         }
     }
 }
@@ -94,6 +103,8 @@ impl TodoTab {
 pub struct MinActionApp {
     store: Arc<Store>,
     clock: Arc<dyn Clock>,
+    /// 启动目录解析器，供存储地址迁移使用。
+    pub(crate) bootstrap: Bootstrap,
 
     /// 全部目标，供结构树渲染。
     pub(crate) all_goals: Vec<Goal>,
@@ -109,9 +120,11 @@ pub struct MinActionApp {
     pub(crate) selected_category: Option<CategoryId>,
     /// 当前中央区页签。
     pub(crate) tab: TodoTab,
+    /// 「编辑」下拉是否展开。
+    pub(crate) menu_open: bool,
     /// 当前打开的任务内容编辑器；`None` 表示未打开。
     pub(crate) editing: Option<Entity<task_editor::TaskEditor>>,
-    /// 当前打开的结构树对话框（重命名/删除/频率/统计/存储）；`None` 表示未打开。
+    /// 当前打开的结构树对话框（重命名/删除/频率/统计/配置）；`None` 表示未打开。
     pub(crate) dialog: Option<StructDialog>,
     /// 今日行动列表（含已结算与顺延），供今日页渲染与完成/跳过/撤销。
     pub(crate) today_actions: Vec<Action>,
@@ -121,6 +134,8 @@ pub struct MinActionApp {
     pub(crate) history_cursor: Option<(NaiveDate, i64)>,
     /// 历史是否还有更早的页。
     pub(crate) history_has_more: bool,
+    /// 复习统计快照，供统计页渲染；`None` 表示读取失败。
+    pub(crate) review_stats: Option<ReviewStats>,
     /// 每日行动上限（从设置读取，供工具栏与状态栏展示）。
     pub(crate) daily_cap: u8,
     /// 主题偏好（从设置读取，供工具栏高亮与启动时应用）。
@@ -130,11 +145,21 @@ pub struct MinActionApp {
 }
 
 impl MinActionApp {
-    /// 构造根视图状态；数据层已就绪，构造时即载入一次。
+    /// 构造根视图状态；默认启动目录，构造时即载入一次。
     pub fn new(store: Store, clock: Arc<dyn Clock>) -> Result<Self> {
+        Self::with_bootstrap(store, clock, Bootstrap::system())
+    }
+
+    /// 注入启动目录解析器构造根视图，供需要自定义数据位置的场景使用。
+    pub fn with_bootstrap(
+        store: Store,
+        clock: Arc<dyn Clock>,
+        bootstrap: Bootstrap,
+    ) -> Result<Self> {
         let mut app = Self {
             store: Arc::new(store),
             clock,
+            bootstrap,
             all_goals: Vec::new(),
             all_categories: Vec::new(),
             all_tasks: Vec::new(),
@@ -142,12 +167,14 @@ impl MinActionApp {
             selected_goal: None,
             selected_category: None,
             tab: TodoTab::Tasks,
+            menu_open: false,
             editing: None,
             dialog: None,
             today_actions: Vec::new(),
             history_actions: Vec::new(),
             history_cursor: None,
             history_has_more: false,
+            review_stats: None,
             daily_cap: DAILY_CAP_DEFAULT,
             theme_choice: ThemeChoice::System,
             palette: Palette::default(),
@@ -164,19 +191,21 @@ impl MinActionApp {
         self.all_tasks = self.store.all_tasks()?;
         self.recompute_task_counts();
 
-        if self.selected_goal.is_none() {
-            self.selected_goal = self.all_goals.first().map(|goal| goal.id);
-        }
-        if self.selected_category.is_none() {
-            self.selected_category = self
-                .all_categories
-                .iter()
-                .find(|category| Some(category.goal_id) == self.selected_goal)
-                .map(|category| category.id);
-        }
+        self.normalize_selection();
         self.daily_cap = self.store.daily_cap()?;
         self.theme_choice = self.store.theme_choice()?;
         self.reload_today()?;
+        self.refresh_stats()?;
+        Ok(())
+    }
+
+    /// 重新计算复习统计快照，供统计页展示。
+    pub(crate) fn refresh_stats(&mut self) -> Result<()> {
+        let today = self.clock.today();
+        self.review_stats = Some(
+            self.store
+                .review_stats(today, stats_view::STATS_WINDOW_DAYS)?,
+        );
         Ok(())
     }
 
@@ -273,26 +302,89 @@ impl MinActionApp {
         self.store.theme_choice().unwrap_or_default()
     }
 
-    /// 切换到指定中央区页签。
-    pub(crate) fn switch_tab(&mut self, tab: TodoTab) {
+    /// 切换到指定中央区页签；进入统计页前重新计算统计，避免展示过期数字。
+    pub(crate) fn switch_tab(&mut self, tab: TodoTab) -> Result<()> {
         self.tab = tab;
+        if tab == TodoTab::Stats {
+            self.refresh_stats()?;
+        }
+        Ok(())
     }
 
-    /// 选中目标，并把当前分类归一化到该目标下第一个分类。
+    /// 展开 / 收起「编辑」下拉。
+    pub(crate) fn toggle_menu(&mut self) {
+        self.menu_open = !self.menu_open;
+    }
+
+    /// 关闭「编辑」下拉。
+    pub(crate) fn close_menu(&mut self) {
+        self.menu_open = false;
+    }
+
+    /// 用迁移后的新连接替换数据层并重载界面。
+    pub(crate) fn replace_store(&mut self, store: Arc<Store>) -> Result<()> {
+        self.store = store;
+        self.reload()?;
+        self.load_history_first()?;
+        Ok(())
+    }
+
+    /// 选中「全部」层级：清除目标与分类过滤。
+    pub(crate) fn select_all(&mut self) {
+        self.selected_goal = None;
+        self.selected_category = None;
+    }
+
+    /// 选中目标，进入「目标」层级：展示该目标下所有任务，不自动选中分类。
     pub(crate) fn select_goal(&mut self, goal: GoalId) {
         self.selected_goal = Some(goal);
-        self.selected_category = self
-            .all_categories
-            .iter()
-            .find(|category| category.goal_id == goal)
-            .map(|category| category.id);
+        self.selected_category = None;
     }
 
-    /// 选中分类，并同步其所属目标。
+    /// 选中分类，进入「分类」层级，并同步其所属目标。
     pub(crate) fn select_category(&mut self, category: CategoryId) {
         self.selected_category = Some(category);
         if let Some(category) = self.all_categories.iter().find(|c| c.id == category) {
             self.selected_goal = Some(category.goal_id);
+        }
+    }
+
+    /// 校验当前选择仍指向存在的数据；失效时回落到更宽的层级。
+    fn normalize_selection(&mut self) {
+        let goal_valid = self
+            .selected_goal
+            .is_some_and(|goal| self.all_goals.iter().any(|g| g.id == goal));
+        if !goal_valid {
+            self.selected_goal = None;
+        }
+        let category_valid = self.selected_category.is_some_and(|category| {
+            self.all_categories
+                .iter()
+                .any(|c| c.id == category && Some(c.goal_id) == self.selected_goal)
+        });
+        if !category_valid {
+            self.selected_category = None;
+        }
+    }
+
+    /// 按当前层级过滤任务：「全部」返回所有，「目标」返回该目标下所有，「分类」返回该分类下所有。
+    pub(crate) fn filtered_tasks(&self) -> Vec<&Task> {
+        match (self.selected_goal, self.selected_category) {
+            (None, _) => self.all_tasks.iter().collect(),
+            (Some(goal), None) => self
+                .all_tasks
+                .iter()
+                .filter(|task| {
+                    self.all_categories
+                        .iter()
+                        .any(|c| c.goal_id == goal && c.id == task.category_id)
+                })
+                .collect(),
+            (Some(_), Some(category)) => self
+                .all_tasks
+                .iter()
+                .filter(|task| task.category_id == category)
+                .collect(),
         }
     }
 
@@ -358,55 +450,25 @@ impl MinActionApp {
             .sum()
     }
 
-    /// 渲染右侧中央区（页签栏 + 内容）。
+    /// 渲染右侧中央区内容（页签在顶部工具栏里切换）。
     fn render_main(&self, entity: Entity<Self>) -> impl IntoElement {
-        let tab = self.tab;
-        let tabs = [TodoTab::Tasks, TodoTab::Today, TodoTab::History];
-        let entity_for_tabs = entity.clone();
-        let tab_buttons: Vec<_> = tabs
-            .iter()
-            .map(move |t| {
-                let active = *t == tab;
-                let tab_value = *t;
-                let entity = entity_for_tabs.clone();
-                div()
-                    .id(format!("tab-{}", t.label()))
-                    .px_3()
-                    .py_2()
-                    .cursor_pointer()
-                    .when(active, |this| {
-                        this.border_b_2().bg(self.palette.active_pill)
-                    })
-                    .child(t.label())
-                    .on_click(move |_ev, _window, cx| {
-                        entity.update(cx, |this, cx| {
-                            this.switch_tab(tab_value);
-                            cx.notify();
-                        });
-                    })
-            })
-            .collect();
-        div()
-            .id("main")
-            .flex_1()
-            .h_full()
-            .child(
-                div()
-                    .id("tab-bar")
-                    .border_b_1()
-                    .flex()
-                    .items_center()
-                    .justify_between()
-                    .px_2()
-                    .child(div().id("tabs-row").flex().gap_1().children(tab_buttons)),
-            )
-            .child(
-                div()
-                    .id("content")
-                    .flex_1()
-                    .p_3()
-                    .child(self.render_tab_content(entity.clone())),
-            )
+        let palette = self.palette;
+        let (heading, subtitle) = match self.tab {
+            TodoTab::Tasks => ("任务", "按结构树筛选任务，点击卡片即可编辑内容。"),
+            TodoTab::Today => ("今日待办", "把大目标拆成今天可以完成的最小行动。"),
+            TodoTab::History => ("历史待办", "回顾过往的行动记录与完成情况。"),
+            TodoTab::Stats => ("统计", "看看最近 30 天的完成情况与复习进度。"),
+        };
+        div().id("main").flex_1().h_full().child(
+            div()
+                .id("content")
+                .flex_1()
+                .min_h_0()
+                .overflow_y_scroll()
+                .p_4()
+                .child(page_heading(heading, subtitle, &palette))
+                .child(self.render_tab_content(entity)),
+        )
     }
 
     /// 渲染当前页签下的内容（Phase 2 仅任务页有真实数据，其余占位）。
@@ -414,30 +476,64 @@ impl MinActionApp {
         match self.tab {
             TodoTab::Tasks => {
                 let entity = entity.clone();
-                let tasks: Vec<&Task> = match self.selected_category {
-                    Some(category) => self
-                        .all_tasks
-                        .iter()
-                        .filter(|task| task.category_id == category)
-                        .collect(),
-                    None => self.all_tasks.iter().collect(),
-                };
+                let tasks = self.filtered_tasks();
+                let is_empty = tasks.is_empty();
+                let palette = self.palette;
                 div()
                     .flex()
                     .flex_col()
-                    .gap_1()
+                    .gap(GAP_SM)
+                    .when(is_empty, |this| {
+                        this.child(empty_state(
+                            "这里还没有任务",
+                            "用顶部「编辑 → 添加任务」创建第一个任务。",
+                            &palette,
+                        ))
+                    })
                     .children(tasks.into_iter().map(move |task| {
                         let entity = entity.clone();
                         let task_id = task.id;
                         let name = task.name.clone();
+                        let frequency = task.frequency.label();
+                        let minutes = task.estimated_minutes;
+                        let category = self
+                            .all_categories
+                            .iter()
+                            .find(|category| category.id == task.category_id)
+                            .map(|category| category.name.clone())
+                            .unwrap_or_default();
                         div()
                             .id(format!("task-{}", task_id.0))
-                            .px_2()
-                            .py_1()
-                            .rounded_md()
-                            .bg(self.palette.panel)
+                            .list_card(&palette)
+                            .px_3()
+                            .py_2()
                             .cursor_pointer()
-                            .child(name)
+                            .child(
+                                div()
+                                    .flex()
+                                    .flex_col()
+                                    .gap(GAP_XS)
+                                    .child(
+                                        div()
+                                            .text_size(TEXT_MD)
+                                            .font_weight(FontWeight::SEMIBOLD)
+                                            .child(name),
+                                    )
+                                    .child(
+                                        div()
+                                            .flex()
+                                            .gap(GAP_SM)
+                                            .text_size(TEXT_XS)
+                                            .text_color(palette.text_muted)
+                                            .child(frequency)
+                                            .when_some(minutes, |this, m| {
+                                                this.child(format!("约 {m} 分钟"))
+                                            })
+                                            .when(!category.is_empty(), |this| {
+                                                this.child(category)
+                                            }),
+                                    ),
+                            )
                             .on_click(move |_ev, window, cx| {
                                 let root = entity.clone();
                                 let store = root.read(cx).store.clone();
@@ -464,6 +560,7 @@ impl MinActionApp {
             }
             TodoTab::Today => div().child(today_view::render(entity.clone(), self)),
             TodoTab::History => div().child(history_view::render(entity.clone(), self)),
+            TodoTab::Stats => div().child(stats_view::render(self)),
         }
     }
 }
@@ -476,6 +573,15 @@ pub fn apply_theme_choice(choice: ThemeChoice, window: &mut Window, cx: &mut App
         ThemeChoice::System => cx.window_appearance().into(),
     };
     Theme::change(mode, Some(window), cx);
+}
+
+/// 主题偏好的展示文案，状态栏与配置窗口共用。
+pub(crate) fn theme_label(choice: ThemeChoice) -> &'static str {
+    match choice {
+        ThemeChoice::System => "跟随系统",
+        ThemeChoice::Light => "浅色",
+        ThemeChoice::Dark => "深色",
+    }
 }
 
 #[cfg(test)]
@@ -513,10 +619,10 @@ impl Render for MinActionApp {
                     StructDialog::Rename(d) => d.into_any_element(),
                     StructDialog::Delete(d) => d.into_any_element(),
                     StructDialog::Frequency(d) => d.into_any_element(),
-                    StructDialog::Stats(d) => d.into_any_element(),
-                    StructDialog::Storage(d) => d.into_any_element(),
                     StructDialog::Note(d) => d.into_any_element(),
                     StructDialog::Reset(d) => d.into_any_element(),
+                    StructDialog::Create(d) => d.into_any_element(),
+                    StructDialog::Config(d) => d.into_any_element(),
                 };
                 this.child(modal_overlay(child, &self.palette))
             })
@@ -524,13 +630,18 @@ impl Render for MinActionApp {
 }
 
 /// 居中的模态遮罩：半透明底色 + 中央卡片容器，包裹任意对话框内容。
+///
+/// `occlude` 让遮罩截断鼠标命中：gpui 用 `hitbox.is_hovered` 判定点击归属，
+/// 遮罩若不拦截，遮住的下层元素仍被视为悬停，点击对话框时会把同一坐标下的
+/// 任务卡片、工具栏按钮一起触发。
 fn modal_overlay(child: impl IntoElement, palette: &Palette) -> impl IntoElement {
     div()
         .absolute()
         .inset_0()
-        .bg(rgb(0x00_00_00).opacity(0.5))
+        .bg(SCRIM)
+        .occlude()
         .flex()
         .items_center()
         .justify_center()
-        .child(div().bg(palette.raised).rounded_lg().child(child))
+        .child(div().surface_card(palette).shadow_lg().child(child))
 }

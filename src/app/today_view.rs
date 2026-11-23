@@ -8,6 +8,7 @@ use gpui::{ClickEvent, Entity, Window};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 
+use super::style::{SurfaceExt, TEXT_MD, Tone, empty_state};
 use crate::app::MinActionApp;
 use crate::model::{Action, ActionId, ActionStatus};
 
@@ -27,10 +28,24 @@ pub(crate) fn render(entity: Entity<MinActionApp>, app: &MinActionApp) -> impl I
         })
         .collect();
 
-    div().id("today").flex().flex_col().gap_2().children(
-        rows.into_iter()
-            .map(move |(action, name)| action_row(entity.clone(), action, name, &app.palette)),
-    )
+    let palette = app.palette;
+    let is_empty = rows.is_empty();
+    div()
+        .id("today")
+        .flex()
+        .flex_col()
+        .gap_2()
+        .when(is_empty, |this| {
+            this.child(empty_state(
+                "今天还没有行动",
+                "任务会按频率生成今日待办，先去添加一个任务吧。",
+                &palette,
+            ))
+        })
+        .children(
+            rows.into_iter()
+                .map(move |(action, name)| action_row(entity.clone(), action, name, palette)),
+        )
 }
 
 /// 单行：任务名 + 备注入口 + 状态相关的操作按钮（完成/跳过/撤销）。
@@ -38,50 +53,74 @@ fn action_row(
     entity: Entity<MinActionApp>,
     action: Action,
     name: String,
-    palette: &Palette,
+    palette: Palette,
 ) -> impl IntoElement {
     let action_id = action.id;
     let status_label = status_text(action.status);
+    let badge_color = match action.status {
+        ActionStatus::Done => palette.success_fg,
+        ActionStatus::Skipped | ActionStatus::Deferred | ActionStatus::Expired => {
+            palette.warning_fg
+        }
+        ActionStatus::Pending => palette.text_muted2,
+    };
     div()
         .id(format!("today-action-{}", action_id.0))
+        .list_card(&palette)
         .flex()
         .items_center()
         .justify_between()
-        .px_2()
-        .py_1()
-        .rounded_md()
-        .bg(palette.panel)
-        .child(div().flex_1().child(name))
+        .gap_2()
+        .px_3()
+        .py_2()
+        .child(
+            div()
+                .flex_1()
+                .flex()
+                .items_center()
+                .gap_2()
+                .child(
+                    div()
+                        .text_size(TEXT_MD)
+                        .font_weight(FontWeight::MEDIUM)
+                        .child(name),
+                )
+                .child(
+                    div()
+                        .badge(&palette)
+                        .text_color(badge_color)
+                        .child(status_label),
+                ),
+        )
         .child(
             div()
                 .flex()
-                .gap_1()
-                .child(note_button(entity.clone(), action_id))
+                .items_center()
+                .gap_2()
+                .child(note_button(entity.clone(), action_id, &palette))
                 .when(action.status.is_settled(), |this| {
-                    this.child(undo_button(entity.clone(), action_id, palette))
+                    this.child(undo_button(entity.clone(), action_id, &palette))
                 })
                 .when(action.status == ActionStatus::Pending, |this| {
                     this.child(action_button(
                         "today-done",
                         "完成",
+                        Tone::Primary,
                         entity.clone(),
                         action_id,
                         ActionStatus::Done,
-                        palette,
+                        &palette,
                     ))
                     .child(action_button(
                         "today-skip",
                         "跳过",
+                        Tone::Neutral,
                         entity.clone(),
                         action_id,
                         ActionStatus::Skipped,
-                        palette,
+                        &palette,
                     ))
-                })
-                .when(
-                    action.status != ActionStatus::Pending && !action.status.is_settled(),
-                    |this| this.child(div().child(status_label)),
-                ),
+                }),
         )
 }
 
@@ -100,19 +139,15 @@ pub(crate) fn status_text(status: ActionStatus) -> &'static str {
 fn action_button(
     id: &'static str,
     label: &'static str,
+    tone: Tone,
     entity: Entity<MinActionApp>,
     action_id: ActionId,
     next: ActionStatus,
     palette: &Palette,
 ) -> impl IntoElement {
     div()
-        .id(id)
-        .px_1()
-        .py_0()
-        .cursor_pointer()
-        .text_size(px(11.))
-        .text_color(palette.text_muted)
-        .hover(|this| this.text_color(palette.text))
+        .id(format!("{id}-{}", action_id.0))
+        .tone_button(palette, tone)
         .child(label)
         .on_click(
             move |_ev: &ClickEvent, _window: &mut Window, cx: &mut App| {
@@ -131,13 +166,8 @@ fn undo_button(
     palette: &Palette,
 ) -> impl IntoElement {
     div()
-        .id("today-undo")
-        .px_1()
-        .py_0()
-        .cursor_pointer()
-        .text_size(px(11.))
-        .text_color(palette.text_muted)
-        .hover(|this| this.text_color(palette.text))
+        .id(format!("today-undo-{}", action_id.0))
+        .tone_button(palette, Tone::Accent)
         .child("撤销")
         .on_click(
             move |_ev: &ClickEvent, _window: &mut Window, cx: &mut App| {
@@ -150,15 +180,14 @@ fn undo_button(
 }
 
 /// 备注按钮：打开左右两栏备注对话框，带来源任务标题、描述与既有备注。
-fn note_button(entity: Entity<MinActionApp>, action_id: ActionId) -> impl IntoElement {
+fn note_button(
+    entity: Entity<MinActionApp>,
+    action_id: ActionId,
+    palette: &Palette,
+) -> impl IntoElement {
     div()
-        .id("today-note")
-        .px_1()
-        .py_0()
-        .cursor_pointer()
-        .text_size(px(11.))
-        .text_color(rgb(0x99_99_99))
-        .hover(|this| this.text_color(rgb(0xcc_cc_cc)))
+        .id(format!("today-note-{}", action_id.0))
+        .tone_button(palette, Tone::Neutral)
         .child("备注")
         .on_click(move |_ev: &ClickEvent, window: &mut Window, cx: &mut App| {
             entity.update(cx, |root, cx| {

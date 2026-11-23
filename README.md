@@ -1,132 +1,135 @@
-# ngy-min-action
+# 最小行动（ngy-min-action）
 
-用自然语言驱动 AI 开发 Rust 项目的骨架：工具链、格式化、lint、测试与治理门禁已预置，
-开发规范以 [`.specify/memory/constitution.md`](.specify/memory/constitution.md) 为准。
+用 Rust + [gpui-kit](https://crates.io/crates/gpui-kit) 写的 Windows 桌面应用：把长期方向拆成
+「目标 → 分类 → 任务」，每天只生成数量受限的一份最小行动清单，并按遗忘曲线安排复习。
+
+数据存本地 SQLite，不联网；领域层、存储层与调度层不依赖界面框架，可无头测试。
+
+## 功能
+
+- **结构树**：左侧「全部 / 目标 / 分类」三级树，显示分类下的任务条数
+- **任务管理**：新建、改名、调整频率（每天 / 每 N 天 / 每周 N 次）与预计耗时；
+  点击任务卡片打开内容编辑器，可写富文本内容（链接可点击）并附图片、音频、视频
+- **今日待办**：完成、跳过、撤销，写备注（左右两栏对照任务内容）
+- **历史待办**：按日期倒序分页浏览，可补结算或撤销
+- **每日上限**：1–20 条，默认 5 条；超出的行动顺延，顺延 7 天未处理转为过期
+- **复习调度**：完成常规行动后按 `[1, 2, 4, 7, 15, 30]` 天推进，6 级毕业
+- **统计**：复习窗口分项、完成率、连续达成天数、任务阶段分布
+- **首选项**：每日上限、数据位置迁移、主题（跟随系统 / 浅色 / 深色）
+- **单实例**：同一台机器同时只允许一个实例运行
 
 ## 环境要求
 
-- [rustup](https://rustup.rs/)；Rust 版本由 `rust-toolchain.toml` 固定为 1.97，
-  rustfmt 与 clippy 随工具链安装
-- 本地想跑依赖检查时装 `cargo install cargo-machete --locked`（CI 会自动装）
+- Windows（标题栏与任务栏图标的设置走 Win32 API；其他平台有回退分支，但未作为目标平台验证）
+- [rustup](https://rustup.rs/)；工具链由 `rust-toolchain.toml` 固定为 1.97，
+  `rustfmt` 与 `clippy` 随工具链安装
 
 ## 快速开始
 
-```bash
+```powershell
 cargo run
 ```
 
-启动后是一个 Windows 桌面常驻程序：
+首次启动会在 `%LOCALAPPDATA%\ngy-min-action` 下创建 `data.db` 并初始化表结构。
+若已有实例在运行，新实例会记录一条日志后直接退出；关闭主窗口即退出程序。
 
-- 关闭主窗口即退出程序；最小化则继续驻留，跨日检测与每日提示不受影响
-- 同一台机器只允许一个实例：重复启动会直接退出并提示「程序已在运行」
-- 数据保存在 `%LOCALAPPDATA%\ngy-min-action\data.db`（SQLite），日志与实例锁在同一目录
-- 程序运行期间，每个本地日会弹出一次置顶提示窗口，关闭即视为当天已提示
+发布构建与性能测量：
 
-### 它做什么
+```powershell
+cargo build --release
+pwsh scripts/perf.ps1 -Runs 20
+```
 
-1. 建立「目标 → 分类 → 任务」三层结构，例如「学习英语 → 口语 → 每周学习一个连读」
-2. 目标、分类、任务都能改名；删除任务前先说明会作废多少未完成行动，确认后这些行动转为「已过期」
-3. 每天自动生成一份最小行动清单，受全局上限（默认 5 条）与每任务上限（每天 1 条）双重约束，超出的顺延
-4. 完成行动后按遗忘曲线 `[1, 2, 4, 7, 15, 30]` 天安排复习；跳过不推进，撤销可回退
-5. 常驻后台，每天弹一次置顶窗口提示当天未完成数量
+## 使用流程
+
+1. 顶部「编辑 → 新建目标」建立第一个目标
+2. 在结构树选中目标，再「编辑 → 新建分类」
+3. 选中分类，「编辑 → 新建任务」（默认频率「每天」）
+4. 在「任务」页点击任务卡片打开内容编辑器：改名称、预计耗时与内容，增删媒体附件；
+   频率走独立的频率对话框
+5. 切到「今日待办」完成或跳过当天行动，需要时写备注
+6. 「历史待办」里可回看并补结算
+7. 「编辑 → 首选项」调整每日上限、数据位置与主题；切到「统计」页签查看复习情况
+
+## 每日生成规则
+
+`src/schedule/generate.rs` 的 `plan_day` 是纯函数，同一输入结果恒定：
+
+- 常规行动在「上次生成日 + 频率间隔」到期时参与竞争，复习行动在 `next_review_on` 到期时参与
+- 同一任务的复习优先于常规；候选按「类型 → 到期日 → 任务 ID」稳定排序
+- 当天已有行动先占名额，剩余名额按每日上限截断，超出部分记为 `deferred`
+- 同一天重复生成是幂等的（`UNIQUE(task_id, on_date)`，已生成的任务不再重复插入）
+
+复习推进见 `src/schedule/review.rs`：完成才推进级别，跳过不推进，撤销通过
+`action_settlements` 里的快照回退。
+
+## 数据位置
+
+默认数据目录 `%LOCALAPPDATA%\ngy-min-action`：
+
+| 文件 / 目录 | 作用 |
+| --- | --- |
+| `data.db` | SQLite 数据库（当前 schema 版本 4） |
+| `attachments/<行动 ID>/` | 行动图片副本 |
+| `task_content/<任务 ID>/` | 任务内容的图片、音频、视频副本 |
+| `location` | 自定义数据目录的绝对路径（不存在则用默认目录） |
+| `app.lock` | 单实例锁 |
+
+存储地址迁移在「首选项 → 存储地址」里完成：先在线备份数据库、复制附件，再用新库执行
+`integrity_check`，通过后才写入位置配置并清理旧数据；任一步失败都会回收目标目录里的临时产物，
+旧位置保持可用。
+
+日志经 `ngy-utils-tracing` 输出：`development` 写 stderr（带文件名与行号），`production`
+只写文件，stdout 不输出日志。
 
 ## 目录结构
 
 | 路径 | 作用 |
 | --- | --- |
-| `src/` | 源码；模块按职责命名，测试镜像源码布局 |
-| `.specify/memory/constitution.md` | 项目宪法，八条原则的唯一定义处 |
-| `AGENTS.md` | 给编码代理的速查入口（索引，不含细则） |
-| `.specify/templates/` | spec-kit 的 spec / plan / tasks / checklist 模板 |
-| `.specify/scripts/` | spec-kit 的 PowerShell 与 Python 辅助脚本 |
-| `.codebuddy/commands/` | `/speckit.*` 命令定义 |
-| `.github/workflows/ci.yml` | CI：格式、lint + 依赖、测试、宪法治理扫描 |
-| `rust-toolchain.toml` | 固定工具链与组件 |
-| `rustfmt.toml` | `edition` / `style_edition` = 2024 |
-| `Cargo.toml` | 包信息与 MSRV（`rust-version`） |
+| `src/main.rs` | 程序入口：初始化日志、记录退出码 |
+| `src/run.rs` | 启动编排：单实例锁、数据目录、窗口尺寸与图标 |
+| `src/app/` | gpui 界面层：根视图、结构树、四页签、工具栏与各类对话框 |
+| `src/model*` | 领域类型、边界校验、主题与统计模型 |
+| `src/store*` | SQLite 存储层：建表迁移、事务化读写、在线备份 |
+| `src/schedule*` | 每日生成与遗忘曲线调度（纯函数） |
+| `src/storage.rs` | 数据位置迁移与旧数据清理 |
+| `src/attachment.rs` | 图片与媒体附件的校验、复制与删除 |
+| `src/config.rs` | 启动目录与数据目录解析 |
+| `src/palette.rs` / `src/app/style.rs` | 随主题自适应的取色板与视觉令牌 |
+| `tests/` | 无头验收测试，按领域模块镜像 |
+| `benches/plan_day.rs` | 200 任务规模下 `plan_day` 的微基准 |
+| `scripts/perf.ps1` | 启动耗时、空闲 CPU、常驻内存的 p95 测量 |
 
-## 质量门禁
+## 开发
 
-与 `ci.yml` 的 job 一一对应：
-
-| 检查 | 对应原则 |
-| --- | --- |
-| `cargo fmt --check` | II |
-| `cargo clippy --all-targets --all-features -- -D warnings` | II |
-| `cargo machete`（未使用依赖） | II |
-| `cargo test --all-targets --all-features` | III |
-| `cargo audit`（依赖漏洞） | VIII |
-| 机密扫描（私钥块、云密钥、平台令牌、误提交的 `.env`） | VIII |
-| TODO 归属扫描 + `#[allow(dead_code)]` 拦截 | II |
-
-本地一次跑完：
-
-```bash
-cargo fmt --check
-cargo clippy --all-targets --all-features -- -D warnings
-cargo test --all-targets --all-features
-cargo machete
+```powershell
+cargo fmt
+cargo clippy --all-targets -- -D warnings
+cargo test
+cargo bench --bench plan_day
 ```
 
-## 项目规范
+在 Windows 上跑构建或测试前先停掉正在运行的实例，否则可执行文件被占用。
 
-宪法八条原则：
+CI（`.github/workflows/ci.yml`）在提交与 PR 上执行：
 
-| 编号 | 原则 | 要点 |
-| --- | --- | --- |
-| I | 源码文件规模与拆分 | 单文件 700 行硬上限、600 行预警线，先拆再改 |
-| II | 代码质量与可维护性 | 公共接口写契约、不留死代码、TODO 必须带 issue |
-| III | 测试先行开发 | 先写测试并看到它失败，再用最少实现转绿 |
-| IV | 对外接触面一致性 | CLI / 库 API / 错误消息统一，错误必须可执行 |
-| V | 性能与效率 | 默认预算（p95 门禁 / p99 观察）、禁止二次复杂度与逐项 IO、变更须附测量、回归 >10% 需理由 |
-| VI | 简单性与 YAGNI | 默认单 crate、不预留配置与推测性抽象、三行重复优于过早抽象 |
-| VII | 可观测性与结构化日志 | 结构化字段、错误只记一次、stdout 放数据 / stderr 放日志、不记敏感信息 |
-| VIII | 安全基线 | 边界校验输入、禁止拼接注入、机密不入库、依赖扫漏洞 |
+| Job | 内容 |
+| --- | --- |
+| `cargo fmt --check` | 格式 |
+| `cargo clippy -D warnings` | lint + `cargo machete` 未使用依赖 |
+| `cargo test` | 全部测试 |
+| `Constitution governance scan` | TODO 归属、禁止 `#[allow(dead_code)]`、单文件 700 行上限 |
+| `cargo audit` | 依赖漏洞 |
+| `Secret scan` | 机密与令牌扫描 |
 
-规则细节只在宪法里维护，本文件不复述，避免两处漂移。
+## 已知限制
 
-## spec-kit 工作流
+- 数据位置迁移目前只搬运 `data.db` 与 `attachments/`，`task_content/` 尚未纳入
+- 每日提示的判定（`src/notify.rs`）与提示记录已实现，但尚未接入界面
+- 任务暂停（`TaskStatus::Paused`）只有数据层支持，界面暂无入口
 
-典型顺序：
+## 协作约定
 
-1. `/speckit.constitution` —— 修订治理原则（可选）
-2. `/speckit.specify` —— 写清要做什么，产出 `specs/<feature>/spec.md`
-3. `/speckit.clarify` —— 消除规格里的歧义
-4. `/speckit.plan` —— 技术方案，产出 `plan.md`，含 Constitution Check
-5. `/speckit.tasks` —— 拆成可执行任务
-6. `/speckit.implement` —— 执行
-
-辅助命令：`/speckit.analyze`、`/speckit.checklist`、`/speckit.taskstoissues`、
-`/speckit.converge`。
-
-## 作为模板使用
-
-1. 改 `Cargo.toml` 的 `name`，crate 名会自动变成下划线形式
-2. 更新 `.github/CODEOWNERS`，把所有者换成你自己或团队
-3. 第一次 `/speckit.plan` 时确认宪法 V 的默认预算是否沿用，未确认即视为沿用
-4. 按需调整 `ci.yml` 的工具链版本与 job
-5. 配置分支保护（见下），否则「变更必须走 PR」只是口头约定
-6. 重写本 README
-
-### 分支保护（只能在 GitHub 上手动开启）
-
-仓库里的任何文件都管不住这条，只有分支保护能让宪法「拉取请求」一节真正生效：
-
-1. Settings → Branches → Add branch protection rule，目标分支 `main`；
-2. 勾选 **Require a pull request before merging**。单开发者仓库可把批准数设为 0，
-   由 Governance 里的单开发者条款以自我证明兜底；
-3. 勾选 **Require status checks to pass**，并选中全部六个：
-   `cargo fmt --check`、`cargo clippy -D warnings`、`cargo test`、
-   `Constitution governance scan`、`cargo audit`、`Secret scan`；
-4. 勾选 **Do not allow bypassing the above settings**，否则管理员仍能直接推送。
-
-开启之前，直接 `git push origin main` 是会成功的——本模板自身的提交历史就是例子。
-
-## 容易踩的约定
-
-- 测试镜像源码：`src/<module>/` 对应 `tests/<module>_test.rs`
-- TODO 只能写成 `TODO(#<issue>): 说明`；裸 `TODO:`、`TODO(TBD)` 会被 CI 拦下
-- 死代码豁免只接受 `#[expect(dead_code, reason = "<理由>，见 #<issue>")]`，
-  `#[allow(dead_code)]` 会被 CI 拦下
-- 未使用的依赖会让 `cargo machete` 失败，先删依赖再加代码，不要反过来
-- 基准工具（`criterion`、`hyperfine`）只在真正要测量时引入，且与第一个基准同时提交
+- 开发与提交规则见 [`AGENTS.md`](AGENTS.md)
+- 项目治理原则（文件规模、测试先行、日志与安全基线等）见
+  [`.specify/memory/constitution.md`](.specify/memory/constitution.md)

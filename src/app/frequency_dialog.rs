@@ -13,6 +13,8 @@ use crate::app::MinActionApp;
 use crate::app::task_editor::TaskEditor;
 use crate::model::Frequency;
 
+use super::style::{SurfaceExt, Tone, dialog_title, field_label};
+
 /// 频率种类可选值，对应 [`Frequency`] 的三种形态。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum FrequencyKind {
@@ -124,7 +126,7 @@ impl Render for FrequencyDialog {
             .gap_3()
             .p_4()
             .w(px(360.))
-            .child(div().text_size(px(18.)).child("频率"))
+            .child(dialog_title("频率"))
             .child(
                 div()
                     .flex()
@@ -154,7 +156,7 @@ impl Render for FrequencyDialog {
                         .flex()
                         .flex_col()
                         .gap_1()
-                        .child(div().text_size(px(12.)).child("数值"))
+                        .child(field_label("数值", &p))
                         .child(Input::new(&raw_state)),
                 )
             })
@@ -166,7 +168,7 @@ impl Render for FrequencyDialog {
                     .flex()
                     .gap_2()
                     .justify_end()
-                    .child(cancel_button(root.clone()))
+                    .child(cancel_button(root.clone(), &p))
                     .child(confirm_button(dialog_entity.clone(), editor, root, &p)),
             )
     }
@@ -182,11 +184,7 @@ fn kind_button(
     let selected = kind == current;
     div()
         .id(format!("freq-kind-{}", kind.kind_str()))
-        .px_2()
-        .py_1()
-        .cursor_pointer()
-        .rounded_md()
-        .when(selected, |this| this.bg(palette.selected))
+        .soft_button(palette, selected)
         .child(match kind {
             FrequencyKind::Daily => "每天",
             FrequencyKind::EveryNDays => "每 N 天",
@@ -202,13 +200,11 @@ fn kind_button(
 }
 
 /// 「取消」按钮：仅关闭对话框。
-fn cancel_button(root: Entity<MinActionApp>) -> impl IntoElement {
+fn cancel_button(root: Entity<MinActionApp>, palette: &Palette) -> impl IntoElement {
     div()
         .id("freq-cancel")
+        .tone_button(palette, Tone::Neutral)
         .px_3()
-        .py_1()
-        .cursor_pointer()
-        .rounded_md()
         .child("取消")
         .on_click(move |_ev, _window, cx| {
             root.update(cx, |root, cx| {
@@ -227,11 +223,8 @@ fn confirm_button(
 ) -> impl IntoElement {
     div()
         .id("freq-confirm")
+        .tone_button(palette, Tone::Primary)
         .px_3()
-        .py_1()
-        .cursor_pointer()
-        .rounded_md()
-        .bg(palette.raised)
         .child("确定")
         .on_click(move |_ev, _window, cx| {
             dialog.update(cx, |this, cx| {

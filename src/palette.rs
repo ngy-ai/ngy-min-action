@@ -31,6 +31,24 @@ pub(crate) struct Palette {
     pub danger: Hsla,
     /// 危险 / 错误文字（对应 `danger_foreground`）。
     pub danger_fg: Hsla,
+    /// 分界线与卡片描边（对应 `border`）。
+    pub border: Hsla,
+    /// 强调色（对应 `accent`）。
+    pub accent: Hsla,
+    /// 强调色上的文字（对应 `accent_foreground`）。
+    pub accent_fg: Hsla,
+    /// 链接文字（对应 `link`）。
+    pub link: Hsla,
+    /// 成功操作背景（对应 `success`）。
+    pub success: Hsla,
+    /// 成功操作文字（对应 `success_foreground`）。
+    pub success_fg: Hsla,
+    /// 成功操作悬停背景（对应 `success_hover`）。
+    pub success_hover: Hsla,
+    /// 次级操作文字（对应 `warning_foreground`）。
+    pub warning_fg: Hsla,
+    /// 底栏背景（对应 `status_bar`）。
+    pub status_bar: Hsla,
 }
 
 impl Palette {
@@ -49,6 +67,15 @@ impl Palette {
             text: t.foreground,
             danger: t.danger,
             danger_fg: t.danger_foreground,
+            border: t.border,
+            accent: t.accent,
+            accent_fg: t.accent_foreground,
+            link: t.link,
+            success: t.success,
+            success_fg: t.success_foreground,
+            success_hover: t.success_hover,
+            warning_fg: t.warning_foreground,
+            status_bar: t.status_bar,
         }
     }
 }
@@ -69,6 +96,15 @@ impl Default for Palette {
             text: t.foreground,
             danger: t.danger,
             danger_fg: t.danger_foreground,
+            border: t.border,
+            accent: t.accent,
+            accent_fg: t.accent_foreground,
+            link: t.link,
+            success: t.success,
+            success_fg: t.success_foreground,
+            success_hover: t.success_hover,
+            warning_fg: t.warning_foreground,
+            status_bar: t.status_bar,
         }
     }
 }
