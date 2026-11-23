@@ -444,69 +444,24 @@ impl MinActionApp {
             .sum()
     }
 
-    /// 渲染右侧中央区（页签栏 + 内容）。
+    /// 渲染右侧中央区内容（页签在顶部工具栏里切换）。
     fn render_main(&self, entity: Entity<Self>) -> impl IntoElement {
-        let tab = self.tab;
         let palette = self.palette;
-        let tabs = [TodoTab::Tasks, TodoTab::Today, TodoTab::History];
-        let entity_for_tabs = entity.clone();
-        let tab_buttons: Vec<_> = tabs
-            .iter()
-            .map(move |t| {
-                let active = *t == tab;
-                let tab_value = *t;
-                let entity = entity_for_tabs.clone();
-                let button = div()
-                    .id(format!("tab-{}", t.label()))
-                    .soft_button(&palette, active)
-                    .when(active, |this| {
-                        this.border_b_2().border_color(palette.accent)
-                    })
-                    .child(t.label());
-                button.on_click(move |_ev, _window, cx| {
-                    entity.update(cx, |this, cx| {
-                        this.switch_tab(tab_value);
-                        cx.notify();
-                    });
-                })
-            })
-            .collect();
-        let (heading, subtitle) = match tab {
+        let (heading, subtitle) = match self.tab {
             TodoTab::Tasks => ("任务", "按结构树筛选任务，点击卡片即可编辑内容。"),
             TodoTab::Today => ("今日待办", "把大目标拆成今天可以完成的最小行动。"),
             TodoTab::History => ("历史待办", "回顾过往的行动记录与完成情况。"),
         };
-        div()
-            .id("main")
-            .flex_1()
-            .h_full()
-            .child(
-                div()
-                    .id("tab-bar")
-                    .border_b_1()
-                    .bg(palette.surface)
-                    .flex()
-                    .items_center()
-                    .px_3()
-                    .py_1()
-                    .child(
-                        div()
-                            .id("tabs-row")
-                            .flex()
-                            .gap(GAP_SM)
-                            .children(tab_buttons),
-                    ),
-            )
-            .child(
-                div()
-                    .id("content")
-                    .flex_1()
-                    .min_h_0()
-                    .overflow_y_scroll()
-                    .p_4()
-                    .child(page_heading(heading, subtitle, &palette))
-                    .child(self.render_tab_content(entity.clone())),
-            )
+        div().id("main").flex_1().h_full().child(
+            div()
+                .id("content")
+                .flex_1()
+                .min_h_0()
+                .overflow_y_scroll()
+                .p_4()
+                .child(page_heading(heading, subtitle, &palette))
+                .child(self.render_tab_content(entity)),
+        )
     }
 
     /// 渲染当前页签下的内容（Phase 2 仅任务页有真实数据，其余占位）。

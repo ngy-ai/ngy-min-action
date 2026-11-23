@@ -1,7 +1,8 @@
 //! 顶部菜单栏 / 底部状态栏渲染与对应入口。
 //!
 //! 菜单栏提供「编辑」（新建目标/分类/任务）、「每日上限」（配置窗口）、
-//! 「主题」（下拉切换）、「统计」与「存储」（配置窗口的存储地址页）。
+//! 「主题」（下拉切换）、「统计」与「存储」（配置窗口的存储地址页），
+//! 以及中央区的三个页签（任务 / 今日待办 / 历史待办）。
 
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
@@ -9,7 +10,7 @@ use gpui_kit::*;
 use super::config_dialog::ConfigTab;
 use super::create_dialog::CreateKind;
 use super::style::{SurfaceExt, TEXT_LG, TEXT_XS};
-use super::{MenuKind, MinActionApp, WINDOW_TITLE, apply_theme_choice};
+use super::{MenuKind, MinActionApp, TodoTab, WINDOW_TITLE, apply_theme_choice};
 use crate::model::ThemeChoice;
 use crate::palette::Palette;
 
@@ -139,6 +140,12 @@ impl MinActionApp {
                     });
                 }
             }))
+            .child(divider(&p))
+            .children(
+                [TodoTab::Tasks, TodoTab::Today, TodoTab::History]
+                    .into_iter()
+                    .map(|tab| tab_button(entity.clone(), tab, self.tab, &p)),
+            )
             // 下拉必须包在 `deferred` 里：它按绝对定位盖住下方区域，但工具栏本身比
             // 结构树与内容区先绘制，直接挂子节点会被后绘制的面板整块遮住（只剩一条边）。
             .when(open == Some(MenuKind::Edit), |this| {
@@ -247,6 +254,25 @@ fn menu_command(
         .soft_button(p, false)
         .child(label)
         .on_click(move |_ev, window, cx| action(window, cx))
+}
+
+/// 工具栏里的页签按钮：切换中央区显示任务 / 今日待办 / 历史待办。
+fn tab_button(
+    app: Entity<MinActionApp>,
+    tab: TodoTab,
+    current: TodoTab,
+    p: &Palette,
+) -> impl IntoElement {
+    div()
+        .id(format!("tab-{}", tab.label()))
+        .soft_button(p, tab == current)
+        .child(tab.label())
+        .on_click(move |_ev, _window, cx| {
+            app.update(cx, |root, cx| {
+                root.switch_tab(tab);
+                cx.notify();
+            });
+        })
 }
 
 /// 「编辑」下拉：新建目标 / 分类 / 任务。
