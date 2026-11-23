@@ -15,6 +15,8 @@ use crate::model::{CategoryId, Frequency, GoalId, TaskDraft};
 use crate::palette::Palette;
 use crate::store::Store;
 
+use super::style::{SurfaceExt, TEXT_SM, Tone, dialog_title, field_label};
+
 /// 新建对象及其归属：目标无归属，分类归属目标，任务归属分类。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CreateKind {
@@ -78,19 +80,19 @@ impl Render for CreateDialog {
             .gap_3()
             .p_4()
             .w(px(380.))
-            .child(div().text_size(px(18.)).child(title))
+            .child(dialog_title(title))
             .child(
                 div()
                     .flex()
                     .flex_col()
-                    .gap_1()
+                    .gap_2()
                     .child(
                         div()
-                            .text_size(px(12.))
+                            .text_size(TEXT_SM)
                             .text_color(p.text_muted)
                             .child(scope),
                     )
-                    .child(div().text_size(px(12.)).child("名称"))
+                    .child(field_label("名称", &p))
                     .child(Input::new(&name_state)),
             )
             .when_some(error, |this, msg| {
@@ -101,20 +103,18 @@ impl Render for CreateDialog {
                     .flex()
                     .gap_2()
                     .justify_end()
-                    .child(cancel_button(root.clone()))
+                    .child(cancel_button(root.clone(), &p))
                     .child(confirm_button(dialog, kind, name_state, store, root, &p)),
             )
     }
 }
 
 /// 「取消」按钮：仅关闭对话框。
-fn cancel_button(root: Entity<MinActionApp>) -> impl IntoElement {
+fn cancel_button(root: Entity<MinActionApp>, palette: &Palette) -> impl IntoElement {
     div()
         .id("create-cancel")
+        .tone_button(palette, Tone::Neutral)
         .px_3()
-        .py_1()
-        .cursor_pointer()
-        .rounded_md()
         .child("取消")
         .on_click(move |_ev, _window, cx| {
             root.update(cx, |root, cx| {
@@ -135,11 +135,8 @@ fn confirm_button(
 ) -> impl IntoElement {
     div()
         .id("create-confirm")
+        .tone_button(palette, Tone::Primary)
         .px_3()
-        .py_1()
-        .cursor_pointer()
-        .rounded_md()
-        .bg(palette.raised)
         .child("确定")
         .on_click(move |_ev, _window, cx| {
             let name = name_state.read(cx).value().trim().to_owned();

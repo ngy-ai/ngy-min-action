@@ -19,6 +19,8 @@ use crate::palette::Palette;
 use crate::storage;
 use crate::store::Store;
 
+use super::style::{SurfaceExt, TEXT_MD, Tone, dialog_title, field_label, info_row};
+
 /// 配置窗口左侧页签。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ConfigTab {
@@ -96,7 +98,7 @@ impl Render for ConfigDialog {
             .gap_3()
             .p_4()
             .w(px(640.))
-            .child(div().text_size(px(18.)).child("配置"))
+            .child(dialog_title("配置"))
             .child(
                 div()
                     .id("config-body")
@@ -134,10 +136,8 @@ impl Render for ConfigDialog {
                 div().flex().gap_2().justify_end().child(
                     div()
                         .id("config-close")
+                        .tone_button(&p, Tone::Neutral)
                         .px_3()
-                        .py_1()
-                        .cursor_pointer()
-                        .rounded_md()
                         .child("关闭")
                         .on_click(move |_ev, _window, cx| {
                             root.update(cx, |root, cx| {
@@ -167,11 +167,7 @@ fn tab_list(dialog: Entity<ConfigDialog>, active: ConfigTab, p: &Palette) -> imp
                     let d = dialog.clone();
                     div()
                         .id(format!("config-tab-{}", tab.label()))
-                        .px_2()
-                        .py_1()
-                        .rounded_md()
-                        .cursor_pointer()
-                        .when(active == tab, |this| this.bg(p.active_pill))
+                        .soft_button(p, active == tab)
                         .child(tab.label())
                         .on_click(move |_ev, _window, cx| {
                             d.update(cx, |this, cx| {
@@ -195,7 +191,12 @@ fn daily_cap_content(
         .flex()
         .flex_col()
         .gap_2()
-        .child(div().child(format!("每天最多生成 {cap} 条行动")))
+        .child(
+            div()
+                .text_size(TEXT_MD)
+                .text_color(p.text)
+                .child(format!("每天最多生成 {cap} 条行动")),
+        )
         .child(
             div()
                 .flex()
@@ -232,11 +233,8 @@ fn cap_step(
 ) -> impl IntoElement {
     div()
         .id(id)
+        .tone_button(p, Tone::Neutral)
         .px_3()
-        .py_1()
-        .cursor_pointer()
-        .rounded_md()
-        .bg(p.inactive_pill)
         .child(label)
         .on_click(move |_ev, _window, cx| {
             root.update(cx, |app, cx| {
@@ -263,28 +261,17 @@ fn storage_content(
         .flex()
         .flex_col()
         .gap_2()
-        .children(rows.into_iter().map(|(label, value)| {
-            div()
-                .flex()
-                .justify_between()
-                .child(div().text_color(p.text_muted).child(label))
-                .child(div().child(value))
-        }))
-        .child(
-            div()
-                .text_size(px(12.))
-                .text_color(p.text_muted)
-                .child("新目录（迁移后数据将搬过去）"),
+        .children(
+            rows.into_iter()
+                .map(|(label, value)| info_row(label, value, p)),
         )
+        .child(field_label("新目录（迁移后数据将搬过去）", p))
         .child(Input::new(&path_input))
         .child(
             div()
                 .id("config-migrate")
+                .tone_button(p, Tone::Primary)
                 .px_3()
-                .py_1()
-                .cursor_pointer()
-                .rounded_md()
-                .bg(p.raised)
                 .child("迁移数据")
                 .on_click(move |_ev, _window, cx| {
                     let path = path_input.read(cx).value().trim().to_owned();

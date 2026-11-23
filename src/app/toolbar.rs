@@ -8,6 +8,7 @@ use gpui_kit::*;
 
 use super::config_dialog::ConfigTab;
 use super::create_dialog::CreateKind;
+use super::style::{SurfaceExt, TEXT_LG, TEXT_XS};
 use super::{MenuKind, MinActionApp, WINDOW_TITLE, apply_theme_choice};
 use crate::model::ThemeChoice;
 use crate::palette::Palette;
@@ -20,18 +21,41 @@ impl MinActionApp {
             .flex()
             .items_center()
             .justify_between()
-            .px_2()
-            .py_1()
+            .px_3()
+            .py_2()
             .border_b_1()
             .bg(self.palette.surface)
             .child(
                 div()
-                    .font_weight(gpui_kit::FontWeight::BOLD)
-                    .child(WINDOW_TITLE),
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .child(
+                        div()
+                            .w(px(20.))
+                            .h(px(20.))
+                            .rounded_md()
+                            .bg(self.palette.accent)
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .child(
+                                div()
+                                    .text_size(TEXT_XS)
+                                    .text_color(self.palette.accent_fg)
+                                    .child("✓"),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .text_size(TEXT_LG)
+                            .font_weight(gpui_kit::FontWeight::BOLD)
+                            .child(WINDOW_TITLE),
+                    ),
             )
             .child(
                 div()
-                    .text_size(px(11.))
+                    .text_size(TEXT_XS)
                     .text_color(self.palette.text_muted)
                     .child("gpui-kit 迁移版"),
             )
@@ -61,9 +85,9 @@ impl MinActionApp {
             .relative()
             .flex()
             .items_center()
-            .gap_1()
-            .px_2()
-            .py_1()
+            .gap_2()
+            .px_3()
+            .py_2()
             .border_b_1()
             .bg(p.surface)
             .child(menu_trigger(
@@ -74,6 +98,7 @@ impl MinActionApp {
                 open,
                 &p,
             ))
+            .child(divider(&p))
             .child(menu_command("menu-daily-cap", "每日上限", &p, {
                 let entity = entity.clone();
                 move |window, cx| {
@@ -84,6 +109,7 @@ impl MinActionApp {
                     });
                 }
             }))
+            .child(divider(&p))
             .child(menu_trigger(
                 entity.clone(),
                 "menu-theme",
@@ -92,6 +118,7 @@ impl MinActionApp {
                 open,
                 &p,
             ))
+            .child(divider(&p))
             .child(menu_command("menu-stats", "统计", &p, {
                 let entity = entity.clone();
                 move |window, cx| {
@@ -112,18 +139,24 @@ impl MinActionApp {
                     });
                 }
             }))
+            // 下拉必须包在 `deferred` 里：它按绝对定位盖住下方区域，但工具栏本身比
+            // 结构树与内容区先绘制，直接挂子节点会被后绘制的面板整块遮住（只剩一条边）。
             .when(open == Some(MenuKind::Edit), |this| {
-                this.child(edit_dropdown(
+                this.child(deferred(edit_dropdown(
                     entity.clone(),
                     goal_scope,
                     goal_label.clone(),
                     category_scope,
                     category_label.clone(),
                     &p,
-                ))
+                )))
             })
             .when(open == Some(MenuKind::Theme), |this| {
-                this.child(theme_dropdown(entity.clone(), self.theme_choice, &p))
+                this.child(deferred(theme_dropdown(
+                    entity.clone(),
+                    self.theme_choice,
+                    &p,
+                )))
             })
     }
 
@@ -140,19 +173,43 @@ impl MinActionApp {
             ThemeChoice::Light => "浅色",
             ThemeChoice::Dark => "深色",
         };
+        let progress = if total == 0 {
+            0.
+        } else {
+            done as f32 / total as f32
+        };
+        let palette = self.palette;
         div()
             .id("status-bar")
             .flex()
             .items_center()
-            .gap_4()
-            .px_2()
-            .py_1()
+            .gap_3()
+            .px_4()
+            .py_2()
             .border_t_1()
-            .text_size(px(11.))
-            .text_color(self.palette.text_muted)
+            .bg(palette.status_bar)
+            .text_size(TEXT_XS)
+            .text_color(palette.text_muted)
             .child(format!("每日上限 {}", self.daily_cap))
+            .child(divider(&palette))
             .child(format!("主题 {theme_label}"))
+            .child(divider(&palette))
             .child(format!("今日 完成 {done}/{total}"))
+            .child(
+                div()
+                    .w(px(96.))
+                    .h(px(4.))
+                    .rounded_full()
+                    .bg(palette.inactive_pill)
+                    .child(
+                        div()
+                            .h_full()
+                            .w(px(96.) * progress)
+                            .rounded_full()
+                            .bg(palette.success),
+                    ),
+            )
+            .child(divider(&palette))
             .child(format!("历史 {}", self.history_actions.len()))
     }
 }
@@ -168,11 +225,7 @@ fn menu_trigger(
 ) -> impl IntoElement {
     div()
         .id(id)
-        .px_3()
-        .py_1()
-        .cursor_pointer()
-        .rounded_md()
-        .when(open == Some(kind), |this| this.bg(p.active_pill))
+        .soft_button(p, open == Some(kind))
         .child(format!("{label} ▾"))
         .on_click(move |_ev, _window, cx| {
             app.update(cx, |root, cx| {
@@ -191,11 +244,7 @@ fn menu_command(
 ) -> impl IntoElement {
     div()
         .id(id)
-        .px_3()
-        .py_1()
-        .cursor_pointer()
-        .rounded_md()
-        .hover(|this| this.bg(p.inactive_pill))
+        .soft_button(p, false)
         .child(label)
         .on_click(move |_ev, window, cx| action(window, cx))
 }
@@ -216,11 +265,10 @@ fn edit_dropdown(
         .left(px(8.))
         .flex()
         .flex_col()
-        .min_w(px(150.))
+        .min_w(px(180.))
         .p_1()
-        .rounded_md()
-        .border_1()
-        .bg(p.raised)
+        .surface_card(p)
+        .shadow_lg()
         .child(dropdown_item("edit-add-goal", "添加目标", p, {
             let app = app.clone();
             move |window, cx| {
@@ -284,11 +332,10 @@ fn theme_dropdown(
         .left(px(120.))
         .flex()
         .flex_col()
-        .min_w(px(150.))
+        .min_w(px(180.))
         .p_1()
-        .rounded_md()
-        .border_1()
-        .bg(p.raised);
+        .surface_card(p)
+        .shadow_lg();
     choices
         .into_iter()
         .fold(panel, |panel, (choice, label)| {
@@ -311,7 +358,7 @@ fn theme_dropdown(
             div()
                 .px_3()
                 .py_1()
-                .text_size(px(11.))
+                .text_size(TEXT_XS)
                 .text_color(p.text_muted)
                 .child(format!(
                     "当前：{}",
@@ -324,6 +371,15 @@ fn theme_dropdown(
         )
 }
 
+/// 工具栏 / 状态栏中的竖直分隔线。
+fn divider(palette: &Palette) -> Div {
+    div()
+        .w(px(1.))
+        .h(px(16.))
+        .flex_shrink_0()
+        .bg(palette.border)
+}
+
 /// 下拉菜单内的可点击项。
 fn dropdown_item(
     id: impl Into<ElementId>,
@@ -333,11 +389,7 @@ fn dropdown_item(
 ) -> impl IntoElement {
     div()
         .id(id.into())
-        .px_3()
-        .py_1()
-        .cursor_pointer()
-        .rounded_md()
-        .hover(|this| this.bg(p.inactive_pill))
+        .soft_button(p, false)
         .child(label)
         .on_click(move |_ev, window, cx| action(window, cx))
 }

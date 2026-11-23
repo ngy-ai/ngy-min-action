@@ -23,6 +23,8 @@ use crate::palette::Palette;
 use crate::store::Store;
 use gpui_kit::component::theme::{Theme, ThemeMode};
 
+use self::style::{GAP_SM, GAP_XS, SCRIM, SurfaceExt, TEXT_MD, TEXT_XS, empty_state, page_heading};
+
 mod config_dialog;
 mod create_dialog;
 mod delete_dialog;
@@ -36,6 +38,7 @@ mod rich_content;
 mod stats_dialog;
 mod storage_dialog;
 mod structure_tree;
+mod style;
 mod task_editor;
 mod today_view;
 mod toolbar;
@@ -444,6 +447,7 @@ impl MinActionApp {
     /// 渲染右侧中央区（页签栏 + 内容）。
     fn render_main(&self, entity: Entity<Self>) -> impl IntoElement {
         let tab = self.tab;
+        let palette = self.palette;
         let tabs = [TodoTab::Tasks, TodoTab::Today, TodoTab::History];
         let entity_for_tabs = entity.clone();
         let tab_buttons: Vec<_> = tabs
@@ -452,23 +456,26 @@ impl MinActionApp {
                 let active = *t == tab;
                 let tab_value = *t;
                 let entity = entity_for_tabs.clone();
-                div()
+                let button = div()
                     .id(format!("tab-{}", t.label()))
-                    .px_3()
-                    .py_2()
-                    .cursor_pointer()
+                    .soft_button(&palette, active)
                     .when(active, |this| {
-                        this.border_b_2().bg(self.palette.active_pill)
+                        this.border_b_2().border_color(palette.accent)
                     })
-                    .child(t.label())
-                    .on_click(move |_ev, _window, cx| {
-                        entity.update(cx, |this, cx| {
-                            this.switch_tab(tab_value);
-                            cx.notify();
-                        });
-                    })
+                    .child(t.label());
+                button.on_click(move |_ev, _window, cx| {
+                    entity.update(cx, |this, cx| {
+                        this.switch_tab(tab_value);
+                        cx.notify();
+                    });
+                })
             })
             .collect();
+        let (heading, subtitle) = match tab {
+            TodoTab::Tasks => ("任务", "按结构树筛选任务，点击卡片即可编辑内容。"),
+            TodoTab::Today => ("今日待办", "把大目标拆成今天可以完成的最小行动。"),
+            TodoTab::History => ("历史待办", "回顾过往的行动记录与完成情况。"),
+        };
         div()
             .id("main")
             .flex_1()
@@ -477,17 +484,27 @@ impl MinActionApp {
                 div()
                     .id("tab-bar")
                     .border_b_1()
+                    .bg(palette.surface)
                     .flex()
                     .items_center()
-                    .justify_between()
-                    .px_2()
-                    .child(div().id("tabs-row").flex().gap_1().children(tab_buttons)),
+                    .px_3()
+                    .py_1()
+                    .child(
+                        div()
+                            .id("tabs-row")
+                            .flex()
+                            .gap(GAP_SM)
+                            .children(tab_buttons),
+                    ),
             )
             .child(
                 div()
                     .id("content")
                     .flex_1()
-                    .p_3()
+                    .min_h_0()
+                    .overflow_y_scroll()
+                    .p_4()
+                    .child(page_heading(heading, subtitle, &palette))
                     .child(self.render_tab_content(entity.clone())),
             )
     }
@@ -498,22 +515,63 @@ impl MinActionApp {
             TodoTab::Tasks => {
                 let entity = entity.clone();
                 let tasks = self.filtered_tasks();
+                let is_empty = tasks.is_empty();
+                let palette = self.palette;
                 div()
                     .flex()
                     .flex_col()
-                    .gap_1()
+                    .gap(GAP_SM)
+                    .when(is_empty, |this| {
+                        this.child(empty_state(
+                            "这里还没有任务",
+                            "用顶部「编辑 → 添加任务」创建第一个任务。",
+                            &palette,
+                        ))
+                    })
                     .children(tasks.into_iter().map(move |task| {
                         let entity = entity.clone();
                         let task_id = task.id;
                         let name = task.name.clone();
+                        let frequency = task.frequency.label();
+                        let minutes = task.estimated_minutes;
+                        let category = self
+                            .all_categories
+                            .iter()
+                            .find(|category| category.id == task.category_id)
+                            .map(|category| category.name.clone())
+                            .unwrap_or_default();
                         div()
                             .id(format!("task-{}", task_id.0))
-                            .px_2()
-                            .py_1()
-                            .rounded_md()
-                            .bg(self.palette.panel)
+                            .list_card(&palette)
+                            .px_3()
+                            .py_2()
                             .cursor_pointer()
-                            .child(name)
+                            .child(
+                                div()
+                                    .flex()
+                                    .flex_col()
+                                    .gap(GAP_XS)
+                                    .child(
+                                        div()
+                                            .text_size(TEXT_MD)
+                                            .font_weight(FontWeight::SEMIBOLD)
+                                            .child(name),
+                                    )
+                                    .child(
+                                        div()
+                                            .flex()
+                                            .gap(GAP_SM)
+                                            .text_size(TEXT_XS)
+                                            .text_color(palette.text_muted)
+                                            .child(frequency)
+                                            .when_some(minutes, |this, m| {
+                                                this.child(format!("约 {m} 分钟"))
+                                            })
+                                            .when(!category.is_empty(), |this| {
+                                                this.child(category)
+                                            }),
+                                    ),
+                            )
                             .on_click(move |_ev, window, cx| {
                                 let root = entity.clone();
                                 let store = root.read(cx).store.clone();
@@ -605,9 +663,9 @@ fn modal_overlay(child: impl IntoElement, palette: &Palette) -> impl IntoElement
     div()
         .absolute()
         .inset_0()
-        .bg(rgb(0x00_00_00).opacity(0.5))
+        .bg(SCRIM)
         .flex()
         .items_center()
         .justify_center()
-        .child(div().bg(palette.raised).rounded_lg().child(child))
+        .child(div().surface_card(palette).shadow_lg().child(child))
 }

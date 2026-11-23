@@ -8,6 +8,7 @@ use gpui::{ClickEvent, Entity, Window};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 
+use super::style::{SurfaceExt, TEXT_MD, Tone, empty_state};
 use crate::app::MinActionApp;
 use crate::app::today_view::status_text;
 use crate::model::{Action, ActionId, ActionStatus};
@@ -28,17 +29,26 @@ pub(crate) fn render(entity: Entity<MinActionApp>, app: &MinActionApp) -> impl I
         })
         .collect();
 
+    let palette = app.palette;
+    let is_empty = rows.is_empty();
     div()
         .id("history")
         .flex()
         .flex_col()
         .gap_2()
+        .when(is_empty, |this| {
+            this.child(empty_state(
+                "还没有历史记录",
+                "完成或跳过行动后，记录会出现在这里。",
+                &palette,
+            ))
+        })
         .children(
             rows.into_iter()
-                .map(|(action, name)| action_row(entity.clone(), action, name, &app.palette)),
+                .map(|(action, name)| action_row(entity.clone(), action, name, &palette)),
         )
         .when(app.history_has_more, |this| {
-            this.child(load_more_button(entity.clone(), &app.palette))
+            this.child(load_more_button(entity.clone(), &palette))
         })
 }
 
@@ -52,20 +62,58 @@ fn action_row(
     let action_id = action.id;
     let date = action.on_date.format("%Y-%m-%d").to_string();
     let status_label = status_text(action.status);
+    let badge_color = match action.status {
+        ActionStatus::Done => palette.success_fg,
+        ActionStatus::Skipped | ActionStatus::Deferred | ActionStatus::Expired => {
+            palette.warning_fg
+        }
+        ActionStatus::Pending => palette.text_muted2,
+    };
     div()
         .id(format!("history-action-{}", action_id.0))
+        .list_card(palette)
         .flex()
         .items_center()
         .justify_between()
-        .px_2()
-        .py_1()
-        .rounded_md()
-        .bg(palette.panel)
-        .child(div().flex_1().child(format!("{name} · {date}")))
+        .gap_2()
+        .px_3()
+        .py_2()
+        .child(
+            div()
+                .flex_1()
+                .flex()
+                .items_center()
+                .gap_2()
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap_1()
+                        .child(
+                            div()
+                                .text_size(TEXT_MD)
+                                .font_weight(FontWeight::MEDIUM)
+                                .child(name),
+                        )
+                        .child(
+                            div()
+                                .text_size(gpui_kit::px(11.))
+                                .text_color(palette.text_muted)
+                                .child(date),
+                        ),
+                )
+                .child(
+                    div()
+                        .badge(palette)
+                        .text_color(badge_color)
+                        .child(status_label),
+                ),
+        )
         .child(
             div()
                 .flex()
-                .gap_1()
+                .items_center()
+                .gap_2()
                 .when(action.status.is_settled(), |this| {
                     this.child(undo_button(entity.clone(), action_id, palette))
                 })
@@ -73,6 +121,7 @@ fn action_row(
                     this.child(action_button(
                         "history-done",
                         "完成",
+                        Tone::Primary,
                         entity.clone(),
                         action_id,
                         ActionStatus::Done,
@@ -81,16 +130,13 @@ fn action_row(
                     .child(action_button(
                         "history-skip",
                         "跳过",
+                        Tone::Neutral,
                         entity.clone(),
                         action_id,
                         ActionStatus::Skipped,
                         palette,
                     ))
-                })
-                .when(
-                    action.status != ActionStatus::Pending && !action.status.is_settled(),
-                    |this| this.child(div().child(status_label)),
-                ),
+                }),
         )
 }
 
@@ -98,19 +144,15 @@ fn action_row(
 fn action_button(
     id: &'static str,
     label: &'static str,
+    tone: Tone,
     entity: Entity<MinActionApp>,
     action_id: ActionId,
     next: ActionStatus,
     palette: &Palette,
 ) -> impl IntoElement {
     div()
-        .id(id)
-        .px_1()
-        .py_0()
-        .cursor_pointer()
-        .text_size(px(11.))
-        .text_color(palette.text_muted)
-        .hover(|this| this.text_color(palette.text))
+        .id(format!("{id}-{}", action_id.0))
+        .tone_button(palette, tone)
         .child(label)
         .on_click(
             move |_ev: &ClickEvent, _window: &mut Window, cx: &mut App| {
@@ -129,13 +171,8 @@ fn undo_button(
     palette: &Palette,
 ) -> impl IntoElement {
     div()
-        .id("history-undo")
-        .px_1()
-        .py_0()
-        .cursor_pointer()
-        .text_size(px(11.))
-        .text_color(palette.text_muted)
-        .hover(|this| this.text_color(palette.text))
+        .id(format!("history-undo-{}", action_id.0))
+        .tone_button(palette, Tone::Accent)
         .child("撤销")
         .on_click(
             move |_ev: &ClickEvent, _window: &mut Window, cx: &mut App| {
@@ -151,14 +188,8 @@ fn undo_button(
 fn load_more_button(entity: Entity<MinActionApp>, palette: &Palette) -> impl IntoElement {
     div()
         .id("history-more")
-        .px_2()
-        .py_1()
-        .mt_1()
-        .cursor_pointer()
-        .rounded_md()
-        .bg(palette.inactive_pill)
-        .text_size(px(12.))
-        .text_color(palette.text_muted2)
+        .tone_button(palette, Tone::Neutral)
+        .mt_2()
         .child("加载更多")
         .on_click(
             move |_ev: &ClickEvent, _window: &mut Window, cx: &mut App| {

@@ -21,6 +21,7 @@ use gpui_kit::component::input::{Input, InputState, Textarea, TextareaState};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 
+use super::style::{TEXT_SM, TEXT_XL};
 use crate::app::MinActionApp;
 use crate::app::rich_content::render_rich_text;
 use crate::model::{Frequency, Task, TaskId, TaskMedia, TaskMediaId, TaskMediaKind};
@@ -104,7 +105,7 @@ impl Render for TaskEditor {
             .w(px(560.))
             .max_h(px(680.))
             .overflow_y_scroll()
-            .child(div().text_size(px(18.)).child("任务内容"))
+            .child(div().text_size(TEXT_XL).child("任务内容"))
             .child(field("名称", Input::new(&name_state)))
             .child(field("预计耗时（分钟）", Input::new(&est_state)))
             .child(field("内容", Textarea::new(&desc_state)))
@@ -114,8 +115,8 @@ impl Render for TaskEditor {
                         .flex()
                         .flex_col()
                         .gap_1()
-                        .child(div().text_size(px(12.)).child("内容预览（点击链接打开）"))
-                        .child(render_rich_text(&desc_preview)),
+                        .child(div().text_size(TEXT_SM).child("内容预览（点击链接打开）"))
+                        .child(render_rich_text(&desc_preview, &p)),
                 )
             })
             .child(
@@ -188,7 +189,7 @@ fn field(label: &'static str, input: impl IntoElement) -> impl IntoElement {
         .flex()
         .flex_col()
         .gap_1()
-        .child(div().text_size(px(12.)).child(label))
+        .child(div().text_size(TEXT_SM).child(label))
         .child(input)
 }
 
@@ -210,7 +211,7 @@ fn media_block(
                 .flex()
                 .items_center()
                 .justify_between()
-                .child(div().text_size(px(12.)).child("媒体"))
+                .child(div().text_size(TEXT_SM).child("媒体"))
                 .child(Button::new("add-media").label("添加媒体").on_click({
                     let add_entity = entity.clone();
                     move |_ev, _window, cx| {

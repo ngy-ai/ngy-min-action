@@ -16,6 +16,8 @@ use crate::app::MinActionApp;
 use crate::model::{ActionId, DomainError};
 use crate::store::Store;
 
+use super::style::{SurfaceExt, TEXT_MD, TEXT_SM, TEXT_XL, Tone};
+
 /// 备注对话框的来源任务上下文：标题、富内容描述与既有备注。
 pub(crate) struct NoteContext {
     pub task_name: String,
@@ -81,7 +83,8 @@ impl Render for NoteDialog {
             .w(px(640.))
             .child(
                 div()
-                    .text_size(px(18.))
+                    .text_size(TEXT_XL)
+                    .font_weight(FontWeight::BOLD)
                     .child(format!("备注 · {task_name}")),
             )
             .child(
@@ -98,17 +101,17 @@ impl Render for NoteDialog {
                             .flex_1()
                             .border_r_1()
                             .pr_3()
+                            .child(div().section_title(&p).child("来源任务"))
                             .child(
                                 div()
-                                    .text_size(px(12.))
-                                    .text_color(p.text_muted)
-                                    .child("来源任务"),
+                                    .text_size(TEXT_MD)
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .child(task_name.clone()),
                             )
-                            .child(div().font_weight(FontWeight::BOLD).child(task_name.clone()))
                             .when_some(task_description.clone(), |this, desc| {
                                 this.child(
                                     div()
-                                        .text_size(px(12.))
+                                        .text_size(TEXT_SM)
                                         .text_color(p.text_muted2)
                                         .child(desc),
                                 )
@@ -121,37 +124,30 @@ impl Render for NoteDialog {
                             .flex_col()
                             .gap_1()
                             .flex_1()
-                            .child(
-                                div()
-                                    .text_size(px(12.))
-                                    .text_color(p.text_muted)
-                                    .child("当前备注"),
-                            )
+                            .child(div().section_title(&p).child("当前备注"))
                             .child(Textarea::new(&note_state).h(px(200.))),
                     ),
             )
             .when_some(error, |this, msg| {
-                this.child(div().text_color(rgb(0xff_88_88)).child(msg))
+                this.child(div().text_color(p.danger_fg).child(msg))
             })
             .child(
                 div()
                     .flex()
                     .gap_2()
                     .justify_end()
-                    .child(cancel_button(root.clone()))
+                    .child(cancel_button(root.clone(), &p))
                     .child(save_button(dialog, action_id, note_state, store, root, &p)),
             )
     }
 }
 
 /// 「取消」按钮：仅关闭对话框。
-fn cancel_button(root: Entity<MinActionApp>) -> impl IntoElement {
+fn cancel_button(root: Entity<MinActionApp>, palette: &Palette) -> impl IntoElement {
     div()
         .id("note-cancel")
+        .tone_button(palette, Tone::Neutral)
         .px_3()
-        .py_1()
-        .cursor_pointer()
-        .rounded_md()
         .child("取消")
         .on_click(move |_ev, _window, cx| {
             root.update(cx, |root, cx| {
@@ -172,11 +168,8 @@ fn save_button(
 ) -> impl IntoElement {
     div()
         .id("note-save")
+        .tone_button(palette, Tone::Primary)
         .px_3()
-        .py_1()
-        .cursor_pointer()
-        .rounded_md()
-        .bg(palette.raised)
         .child("保存")
         .on_click(move |_ev, _window, cx| {
             let note = note_state.read(cx).value();

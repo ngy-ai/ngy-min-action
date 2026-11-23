@@ -9,7 +9,7 @@ use anyhow::{Context, Result};
 use tracing::{info, warn};
 
 use gpui_kit::{
-    App, AppContext, Bounds, Pixels, Size, WindowBounds, WindowOptions, point, px, size,
+    App, AppContext, Bounds, Pixels, Size, Window, WindowBounds, WindowOptions, point, px, size,
 };
 
 use ngy_min_action::app::{MinActionApp, WINDOW_TITLE, apply_theme_choice};
@@ -64,6 +64,7 @@ pub(crate) fn run() -> Result<()> {
             cx,
             |window, cx| {
                 window.set_window_title(WINDOW_TITLE);
+                apply_window_icon(window);
                 apply_theme_choice(theme, window, cx);
                 cx.new(|_| app)
             },
@@ -72,6 +73,57 @@ pub(crate) fn run() -> Result<()> {
     });
     Ok(())
 }
+
+/// Windows 下把内嵌 PNG 图标装到窗口（标题栏与任务栏按钮）；其他平台保持系统默认。
+#[cfg(windows)]
+fn apply_window_icon(window: &Window) {
+    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    use windows_sys::Win32::Foundation::{LPARAM, WPARAM};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        CreateIconFromResourceEx, ICON_BIG, ICON_SMALL, LR_DEFAULTCOLOR, WM_SETICON,
+    };
+
+    const ICON_PNG: &[u8] = include_bytes!("../assets/app-icon.png");
+    /// Vista 起 `CreateIconFromResourceEx` 接受 PNG 编码的图标资源。
+    const PNG_ICON_VERSION: u32 = 0x0003_0000;
+
+    let Ok(handle) = HasWindowHandle::window_handle(window) else {
+        warn!(op = "window_icon", result = "no_window_handle");
+        return;
+    };
+    let RawWindowHandle::Win32(win32) = handle.as_raw() else {
+        warn!(op = "window_icon", result = "unexpected_window_handle");
+        return;
+    };
+    let hwnd = win32.hwnd.get() as *mut std::ffi::c_void;
+    unsafe {
+        let icon = CreateIconFromResourceEx(
+            ICON_PNG.as_ptr(),
+            ICON_PNG.len() as u32,
+            1,
+            PNG_ICON_VERSION,
+            0,
+            0,
+            LR_DEFAULTCOLOR,
+        );
+        if icon.is_null() {
+            warn!(op = "window_icon", result = "create_failed");
+            return;
+        }
+        for which in [ICON_BIG, ICON_SMALL] {
+            windows_sys::Win32::UI::WindowsAndMessaging::SendMessageW(
+                hwnd,
+                WM_SETICON,
+                which as WPARAM,
+                icon as LPARAM,
+            );
+        }
+    }
+}
+
+/// 非 Windows 平台无需替换窗口图标。
+#[cfg(not(windows))]
+fn apply_window_icon(_window: &Window) {}
 
 /// 依据显示器可用区域计算初始窗口尺寸：取舒适尺寸与可用区域（留边距）中的较小值。
 fn fitted_window_size(available: Size<Pixels>) -> Size<Pixels> {

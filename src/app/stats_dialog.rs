@@ -9,6 +9,9 @@ use gpui_kit::*;
 
 use crate::app::MinActionApp;
 use crate::model::ReviewStats;
+use crate::palette::Palette;
+
+use super::style::{SurfaceExt, Tone, dialog_title, info_row};
 
 /// 统计窗口天数（含今天），用于完成率统计。
 pub(crate) const STATS_WINDOW_DAYS: u32 = 30;
@@ -48,9 +51,10 @@ pub(crate) fn stats_rows(stats: &ReviewStats) -> Vec<(&'static str, String)> {
 }
 
 impl Render for StatsDialog {
-    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let root = self.root.clone();
         let rows = stats_rows(&self.stats);
+        let p = Palette::from_cx(cx);
         div()
             .id("stats-dialog")
             .flex()
@@ -58,32 +62,27 @@ impl Render for StatsDialog {
             .gap_2()
             .p_4()
             .w(px(360.))
-            .child(div().text_size(px(18.)).child("复习统计"))
-            .children(rows.into_iter().map(|(label, value)| {
-                div()
-                    .flex()
-                    .justify_between()
-                    .child(div().child(label))
-                    .child(div().child(value))
-            }))
+            .child(dialog_title("复习统计"))
+            .children(
+                rows.into_iter()
+                    .map(|(label, value)| info_row(label, value, &p)),
+            )
             .child(
                 div()
                     .flex()
                     .gap_2()
                     .justify_end()
-                    .child(cancel_button(root)),
+                    .child(cancel_button(root, &p)),
             )
     }
 }
 
 /// 「关闭」按钮：仅关闭对话框。
-fn cancel_button(root: Entity<MinActionApp>) -> impl IntoElement {
+fn cancel_button(root: Entity<MinActionApp>, palette: &Palette) -> impl IntoElement {
     div()
         .id("stats-close")
+        .tone_button(palette, Tone::Neutral)
         .px_3()
-        .py_1()
-        .cursor_pointer()
-        .rounded_md()
         .child("关闭")
         .on_click(move |_ev, _window, cx| {
             root.update(cx, |root, cx| {

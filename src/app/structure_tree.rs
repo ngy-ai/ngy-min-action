@@ -1,6 +1,7 @@
 use gpui::{App, ClickEvent, Window};
 use gpui_kit::*;
 
+use super::style::{SurfaceExt, TEXT_MD, TEXT_XS};
 use super::*;
 use crate::palette::Palette;
 
@@ -16,19 +17,38 @@ impl MinActionApp {
             .h_full()
             .flex_shrink_0()
             .border_r_1()
+            .bg(palette.surface)
             .overflow_y_scroll()
-            .child(div().px_3().py_2().child("结构"))
+            .child(
+                div()
+                    .px_3()
+                    .py_3()
+                    .border_b_1()
+                    .child(div().section_title(&palette).child("结构")),
+            )
             .child({
                 let all_entity = entity.clone();
                 let all_selected = selected_goal.is_none();
                 div()
                     .id("struct-all")
                     .px_3()
-                    .py_1()
+                    .py_2()
                     .rounded_md()
-                    .when(all_selected, |this| this.bg(self.palette.selected))
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .when(all_selected, |this| {
+                        this.bg(palette.selected)
+                            .border_l_2()
+                            .border_color(palette.accent)
+                    })
                     .cursor_pointer()
-                    .child(format!("全部（{}）", self.all_tasks.len()))
+                    .child(div().text_size(TEXT_MD).child("全部"))
+                    .child(
+                        div()
+                            .badge(&palette)
+                            .child(self.all_tasks.len().to_string()),
+                    )
                     .on_click(move |_ev, _window, cx| {
                         all_entity.update(cx, |this, cx| {
                             this.select_all();
@@ -52,11 +72,15 @@ impl MinActionApp {
                         let mut rows = vec![{
                             div()
                                 .id(format!("goal-{gi}"))
-                                .pl_5()
-                                .pr_3()
-                                .py_1()
+                                .pl_4()
+                                .pr_2()
+                                .py_2()
                                 .rounded_md()
-                                .when(goal_selected, |this| this.bg(self.palette.selected))
+                                .when(goal_selected, |this| {
+                                    this.bg(palette.selected)
+                                        .border_l_2()
+                                        .border_color(palette.accent)
+                                })
                                 .flex()
                                 .items_center()
                                 .justify_between()
@@ -69,8 +93,17 @@ impl MinActionApp {
                                 .child(
                                     div()
                                         .flex_1()
+                                        .flex()
+                                        .items_center()
+                                        .gap_2()
                                         .cursor_pointer()
-                                        .child(format!("{}（{}）", goal.name, count)),
+                                        .child(
+                                            div()
+                                                .text_size(TEXT_MD)
+                                                .font_weight(gpui_kit::FontWeight::SEMIBOLD)
+                                                .child(goal.name.clone()),
+                                        )
+                                        .child(div().badge(&palette).child(count.to_string())),
                                 )
                                 .child(
                                     div()
@@ -126,11 +159,15 @@ impl MinActionApp {
                             rows.push(
                                 div()
                                     .id(format!("cat-{gi}-{ci}"))
-                                    .pl_8()
-                                    .pr_3()
-                                    .py_1()
+                                    .pl_7()
+                                    .pr_2()
+                                    .py_1p5()
                                     .rounded_md()
-                                    .when(cat_selected, |this| this.bg(self.palette.selected))
+                                    .when(cat_selected, |this| {
+                                        this.bg(palette.selected)
+                                            .border_l_2()
+                                            .border_color(palette.accent)
+                                    })
                                     .flex()
                                     .items_center()
                                     .justify_between()
@@ -143,8 +180,18 @@ impl MinActionApp {
                                     .child(
                                         div()
                                             .flex_1()
+                                            .flex()
+                                            .items_center()
+                                            .gap_2()
                                             .cursor_pointer()
-                                            .child(format!("{}（{}）", category.name, cat_count)),
+                                            .child(
+                                                div()
+                                                    .text_size(TEXT_XS)
+                                                    .child(category.name.clone()),
+                                            )
+                                            .child(
+                                                div().badge(&palette).child(cat_count.to_string()),
+                                            ),
                                     )
                                     .child(
                                         div()
@@ -199,12 +246,9 @@ fn struct_action(
 ) -> impl IntoElement {
     div()
         .id(id)
-        .px_1()
-        .py_0()
-        .cursor_pointer()
-        .text_size(px(11.))
-        .text_color(palette.text_muted)
-        .hover(|this| this.text_color(palette.text))
+        .soft_button(palette, false)
+        .px_2()
+        .text_size(TEXT_XS)
         .child(label)
         .on_click(handler)
 }

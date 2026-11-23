@@ -14,6 +14,8 @@ use crate::app::MinActionApp;
 use crate::model::TaskId;
 use crate::store::Store;
 
+use super::style::{SurfaceExt, TEXT_MD, Tone, dialog_title};
+
 /// 重置复习进度对话框视图。
 pub(crate) struct ResetDialog {
     task_id: TaskId,
@@ -55,11 +57,16 @@ impl Render for ResetDialog {
             .gap_3()
             .p_4()
             .w(px(360.))
-            .child(div().text_size(px(18.)).child("重置复习进度"))
-            .child(div().text_size(px(13.)).child(format!(
-                "确认将《{}》的复习进度重置为第 0 级？此操作不可撤销。",
-                self.task_name
-            )))
+            .child(dialog_title("重置复习进度"))
+            .child(
+                div()
+                    .text_size(TEXT_MD)
+                    .text_color(p.text_muted2)
+                    .child(format!(
+                        "确认将《{}》的复习进度重置为第 0 级？此操作不可撤销。",
+                        self.task_name
+                    )),
+            )
             .when_some(self.error.clone(), |this, message| {
                 this.child(div().text_color(p.danger_fg).child(message))
             })
@@ -68,20 +75,18 @@ impl Render for ResetDialog {
                     .flex()
                     .gap_2()
                     .justify_end()
-                    .child(cancel_button(root.clone()))
+                    .child(cancel_button(root.clone(), &p))
                     .child(confirm_button(task_id, store, root, dialog_entity, &p)),
             )
     }
 }
 
 /// 「取消」按钮：仅关闭对话框。
-fn cancel_button(root: Entity<MinActionApp>) -> impl IntoElement {
+fn cancel_button(root: Entity<MinActionApp>, palette: &Palette) -> impl IntoElement {
     div()
         .id("reset-cancel")
+        .tone_button(palette, Tone::Neutral)
         .px_3()
-        .py_1()
-        .cursor_pointer()
-        .rounded_md()
         .child("取消")
         .on_click(move |_ev, _window, cx| {
             root.update(cx, |root, cx| {
@@ -101,11 +106,8 @@ fn confirm_button(
 ) -> impl IntoElement {
     div()
         .id("reset-confirm")
+        .tone_button(palette, Tone::Danger)
         .px_3()
-        .py_1()
-        .cursor_pointer()
-        .rounded_md()
-        .bg(palette.raised)
         .child("确认重置")
         .on_click(
             move |_ev, _window, cx| match store.reset_review_progress(task_id) {

@@ -10,6 +10,8 @@ use gpui::{App, Context, Entity, Render, Window};
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::*;
 
+use super::style::{SurfaceExt, Tone, dialog_title, field_label};
+
 use crate::app::MinActionApp;
 use crate::app::StructTarget;
 use crate::store::Store;
@@ -56,13 +58,13 @@ impl Render for RenameDialog {
             .gap_3()
             .p_4()
             .w(px(360.))
-            .child(div().text_size(px(18.)).child("重命名"))
+            .child(dialog_title("重命名"))
             .child(
                 div()
                     .flex()
                     .flex_col()
-                    .gap_1()
-                    .child(div().text_size(px(12.)).child("名称"))
+                    .gap_2()
+                    .child(field_label("名称", &p))
                     .child(Input::new(&name_state)),
             )
             .child(
@@ -70,20 +72,18 @@ impl Render for RenameDialog {
                     .flex()
                     .gap_2()
                     .justify_end()
-                    .child(cancel_button(root.clone()))
+                    .child(cancel_button(root.clone(), &p))
                     .child(confirm_button(target, name_state, store, root, &p)),
             )
     }
 }
 
 /// 「取消」按钮：仅关闭对话框。
-fn cancel_button(root: Entity<MinActionApp>) -> impl IntoElement {
+fn cancel_button(root: Entity<MinActionApp>, palette: &Palette) -> impl IntoElement {
     div()
         .id("rename-cancel")
+        .tone_button(palette, Tone::Neutral)
         .px_3()
-        .py_1()
-        .cursor_pointer()
-        .rounded_md()
         .child("取消")
         .on_click(move |_ev, _window, cx| {
             root.update(cx, |root, cx| {
@@ -103,11 +103,8 @@ fn confirm_button(
 ) -> impl IntoElement {
     div()
         .id("rename-confirm")
+        .tone_button(palette, Tone::Primary)
         .px_3()
-        .py_1()
-        .cursor_pointer()
-        .rounded_md()
-        .bg(palette.raised)
         .child("确定")
         .on_click(move |_ev, _window, cx| {
             let name = name_state.read(cx).value().trim().to_string();
