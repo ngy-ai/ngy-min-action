@@ -610,11 +610,16 @@ impl Render for MinActionApp {
 }
 
 /// 居中的模态遮罩：半透明底色 + 中央卡片容器，包裹任意对话框内容。
+///
+/// `occlude` 让遮罩截断鼠标命中：gpui 用 `hitbox.is_hovered` 判定点击归属，
+/// 遮罩若不拦截，遮住的下层元素仍被视为悬停，点击对话框时会把同一坐标下的
+/// 任务卡片、工具栏按钮一起触发。
 fn modal_overlay(child: impl IntoElement, palette: &Palette) -> impl IntoElement {
     div()
         .absolute()
         .inset_0()
         .bg(SCRIM)
+        .occlude()
         .flex()
         .items_center()
         .justify_center()
