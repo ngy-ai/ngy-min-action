@@ -3977,9 +3977,11 @@ dependencies = [
  "gpui-kit",
  "image",
  "ngy-utils-tracing",
+ "raw-window-handle",
  "rfd",
  "rusqlite",
  "tracing",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
