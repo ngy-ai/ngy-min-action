@@ -1,6 +1,6 @@
 //! 顶部菜单栏 / 底部状态栏渲染与对应入口。
 //!
-//! 菜单栏提供「编辑」（新建目标/分类/任务、每日上限、存储地址）与「统计」，以及中央区的
+//! 菜单栏提供「编辑」（新建目标/分类/任务、首选项）与「统计」，以及中央区的
 //! 三个页签（任务 / 今日待办 / 历史待办）；主题在配置窗口里切换。
 
 use gpui_kit::prelude::FluentBuilder;
@@ -60,7 +60,7 @@ impl MinActionApp {
             )
     }
 
-    /// 渲染菜单栏：编辑（新建 / 每日上限 / 存储地址）、统计与三个页签。
+    /// 渲染菜单栏：编辑（新建 / 首选项）、统计与三个页签。
     pub(crate) fn render_toolbar(&self, entity: Entity<MinActionApp>) -> impl IntoElement {
         let p = self.palette;
         let open = self.menu_open;
@@ -223,7 +223,7 @@ fn tab_button(
         })
 }
 
-/// 「编辑」下拉：新建目标 / 分类 / 任务，以及每日上限与存储地址。
+/// 「编辑」下拉：新建目标 / 分类 / 任务，以及首选项。
 fn edit_dropdown(
     app: Entity<MinActionApp>,
     goal_scope: Option<crate::model::GoalId>,
@@ -294,23 +294,13 @@ fn edit_dropdown(
             }
         }))
         .child(menu_separator(p))
-        .child(dropdown_item("edit-daily-cap", "每日上限", p, false, {
+        .child(dropdown_item("edit-preferences", "首选项", p, false, {
             let app = app.clone();
             move |window, cx| {
                 app.update(cx, |root, cx| {
                     root.close_menu();
                     let entity = cx.entity();
                     root.open_config(ConfigTab::DailyCap, entity, window, cx);
-                });
-            }
-        }))
-        .child(dropdown_item("edit-storage", "存储地址", p, false, {
-            let app = app.clone();
-            move |window, cx| {
-                app.update(cx, |root, cx| {
-                    root.close_menu();
-                    let entity = cx.entity();
-                    root.open_config(ConfigTab::Storage, entity, window, cx);
                 });
             }
         }))
