@@ -1,7 +1,7 @@
 //! 顶部菜单栏 / 底部状态栏渲染与对应入口。
 //!
-//! 菜单栏提供「编辑」（新建目标/分类/任务、首选项）与「统计」，以及中央区的
-//! 三个页签（任务 / 今日待办 / 历史待办）；主题在配置窗口里切换。
+//! 菜单栏提供「编辑」（新建目标/分类/任务、首选项），以及中央区的四个页签
+//! （任务 / 今日待办 / 历史待办 / 统计）；主题在配置窗口里切换。
 
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
@@ -60,7 +60,7 @@ impl MinActionApp {
             )
     }
 
-    /// 渲染菜单栏：编辑（新建 / 首选项）、统计与三个页签。
+    /// 渲染菜单栏：编辑（新建 / 首选项）与四个页签。
     pub(crate) fn render_toolbar(&self, entity: Entity<MinActionApp>) -> impl IntoElement {
         let p = self.palette;
         let open = self.menu_open;
@@ -91,21 +91,15 @@ impl MinActionApp {
             .bg(p.surface)
             .child(menu_trigger(entity.clone(), "menu-edit", "编辑", open, &p))
             .child(divider(&p))
-            .child(menu_command("menu-stats", "统计", &p, {
-                let entity = entity.clone();
-                move |window, cx| {
-                    entity.update(cx, |root, cx| {
-                        root.close_menu();
-                        let app_entity = cx.entity();
-                        root.open_stats(app_entity, window, cx);
-                    });
-                }
-            }))
-            .child(divider(&p))
             .children(
-                [TodoTab::Tasks, TodoTab::Today, TodoTab::History]
-                    .into_iter()
-                    .map(|tab| tab_button(entity.clone(), tab, self.tab, &p)),
+                [
+                    TodoTab::Tasks,
+                    TodoTab::Today,
+                    TodoTab::History,
+                    TodoTab::Stats,
+                ]
+                .into_iter()
+                .map(|tab| tab_button(entity.clone(), tab, self.tab, &p)),
             )
             // 下拉必须包在 `deferred` 里：它按绝对定位盖住下方区域，但工具栏本身比
             // 结构树与内容区先绘制，直接挂子节点会被后绘制的面板整块遮住（只剩一条边）。
@@ -190,21 +184,7 @@ fn menu_trigger(
         })
 }
 
-/// 顶层命令菜单项：点击直接触发动作。
-fn menu_command(
-    id: &'static str,
-    label: &'static str,
-    p: &Palette,
-    action: impl Fn(&mut Window, &mut App) + 'static,
-) -> impl IntoElement {
-    div()
-        .id(id)
-        .soft_button(p, false)
-        .child(label)
-        .on_click(move |_ev, window, cx| action(window, cx))
-}
-
-/// 工具栏里的页签按钮：切换中央区显示任务 / 今日待办 / 历史待办。
+/// 工具栏里的页签按钮：切换中央区显示任务 / 今日待办 / 历史待办 / 统计。
 fn tab_button(
     app: Entity<MinActionApp>,
     tab: TodoTab,
@@ -217,7 +197,9 @@ fn tab_button(
         .child(tab.label())
         .on_click(move |_ev, _window, cx| {
             app.update(cx, |root, cx| {
-                root.switch_tab(tab);
+                if let Err(error) = root.switch_tab(tab) {
+                    tracing::error!("切换页签失败：{error:#}");
+                }
                 cx.notify();
             });
         })

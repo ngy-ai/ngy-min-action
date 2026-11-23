@@ -87,8 +87,36 @@ fn switch_tab_updates_state() {
     let mut app = MinActionApp::new(store, Arc::new(SystemClock)).expect("构造根视图");
 
     assert_eq!(app.tab, TodoTab::Tasks, "默认应为任务页");
-    app.switch_tab(TodoTab::History);
+    app.switch_tab(TodoTab::History).expect("切换到历史页");
     assert_eq!(app.tab, TodoTab::History, "应切换到历史页");
+    app.switch_tab(TodoTab::Stats).expect("切换到统计页");
+    assert_eq!(app.tab, TodoTab::Stats, "应切换到统计页");
+}
+
+/// 统计页与任务 / 今日待办 / 历史待办同级：切换过去时重新计算统计，展示最新数字。
+#[test]
+fn switching_to_stats_tab_refreshes_review_stats() {
+    let store = open_temp_store("stats-tab");
+    let goal = store.create_goal("AI", None).expect("创建目标");
+    let category = store.create_category(goal, "口语").expect("创建分类");
+    let draft = TaskDraft {
+        name: "朗读课文".to_owned(),
+        frequency: Frequency::Daily,
+        estimated_minutes: None,
+        description: None,
+    };
+    store.create_task(category, draft).expect("创建任务");
+
+    let mut app = MinActionApp::new(store, Arc::new(SystemClock)).expect("构造根视图");
+    assert!(app.review_stats.is_some(), "reload 后应算出统计快照");
+
+    let action_id = app.today_actions.first().expect("今日应有行动").id;
+    app.settle_today_action(action_id, ActionStatus::Done)
+        .expect("结算完成");
+    app.switch_tab(TodoTab::Stats).expect("切换到统计页");
+
+    let stats = app.review_stats.as_ref().expect("统计页应有统计快照");
+    assert_eq!(stats.tally.done, 1, "切到统计页时应看到刚完成的行动");
 }
 
 /// 「编辑」下拉：点击展开，再点收起，显式关闭后为空。

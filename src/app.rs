@@ -16,8 +16,8 @@ use crate::clock::Clock;
 use crate::common::{DAILY_CAP_DEFAULT, HISTORY_PAGE_SIZE};
 use crate::config::Bootstrap;
 use crate::model::{
-    Action, ActionId, ActionStatus, Category, CategoryId, DeletionImpact, Goal, GoalId, Task,
-    ThemeChoice,
+    Action, ActionId, ActionStatus, Category, CategoryId, DeletionImpact, Goal, GoalId,
+    ReviewStats, Task, ThemeChoice,
 };
 use crate::palette::Palette;
 use crate::store::Store;
@@ -35,7 +35,7 @@ mod note_dialog;
 mod rename_dialog;
 mod reset_dialog;
 mod rich_content;
-mod stats_dialog;
+mod stats_view;
 mod storage_dialog;
 mod structure_tree;
 mod style;
@@ -64,8 +64,6 @@ pub(crate) enum StructDialog {
     Delete(Entity<delete_dialog::DeleteDialog>),
     /// 编辑任务频率。
     Frequency(Entity<frequency_dialog::FrequencyDialog>),
-    /// 复习统计展示。
-    Stats(Entity<stats_dialog::StatsDialog>),
     /// 行动备注（左右两栏：来源任务 / 当前备注）。
     Note(Entity<note_dialog::NoteDialog>),
     /// 重置任务复习进度（遗忘曲线归零）。
@@ -85,6 +83,8 @@ pub enum TodoTab {
     Today,
     /// 今天之前的历史待办。
     History,
+    /// 复习统计：窗口分项、连续达成与任务进度。
+    Stats,
 }
 
 impl TodoTab {
@@ -94,6 +94,7 @@ impl TodoTab {
             TodoTab::Tasks => "任务",
             TodoTab::Today => "今日待办",
             TodoTab::History => "历史待办",
+            TodoTab::Stats => "统计",
         }
     }
 }
@@ -133,6 +134,8 @@ pub struct MinActionApp {
     pub(crate) history_cursor: Option<(NaiveDate, i64)>,
     /// 历史是否还有更早的页。
     pub(crate) history_has_more: bool,
+    /// 复习统计快照，供统计页渲染；`None` 表示读取失败。
+    pub(crate) review_stats: Option<ReviewStats>,
     /// 每日行动上限（从设置读取，供工具栏与状态栏展示）。
     pub(crate) daily_cap: u8,
     /// 主题偏好（从设置读取，供工具栏高亮与启动时应用）。
@@ -171,6 +174,7 @@ impl MinActionApp {
             history_actions: Vec::new(),
             history_cursor: None,
             history_has_more: false,
+            review_stats: None,
             daily_cap: DAILY_CAP_DEFAULT,
             theme_choice: ThemeChoice::System,
             palette: Palette::default(),
@@ -191,6 +195,17 @@ impl MinActionApp {
         self.daily_cap = self.store.daily_cap()?;
         self.theme_choice = self.store.theme_choice()?;
         self.reload_today()?;
+        self.refresh_stats()?;
+        Ok(())
+    }
+
+    /// 重新计算复习统计快照，供统计页展示。
+    pub(crate) fn refresh_stats(&mut self) -> Result<()> {
+        let today = self.clock.today();
+        self.review_stats = Some(
+            self.store
+                .review_stats(today, stats_view::STATS_WINDOW_DAYS)?,
+        );
         Ok(())
     }
 
@@ -287,9 +302,13 @@ impl MinActionApp {
         self.store.theme_choice().unwrap_or_default()
     }
 
-    /// 切换到指定中央区页签。
-    pub(crate) fn switch_tab(&mut self, tab: TodoTab) {
+    /// 切换到指定中央区页签；进入统计页前重新计算统计，避免展示过期数字。
+    pub(crate) fn switch_tab(&mut self, tab: TodoTab) -> Result<()> {
         self.tab = tab;
+        if tab == TodoTab::Stats {
+            self.refresh_stats()?;
+        }
+        Ok(())
     }
 
     /// 展开 / 收起「编辑」下拉。
@@ -438,6 +457,7 @@ impl MinActionApp {
             TodoTab::Tasks => ("任务", "按结构树筛选任务，点击卡片即可编辑内容。"),
             TodoTab::Today => ("今日待办", "把大目标拆成今天可以完成的最小行动。"),
             TodoTab::History => ("历史待办", "回顾过往的行动记录与完成情况。"),
+            TodoTab::Stats => ("统计", "看看最近 30 天的完成情况与复习进度。"),
         };
         div().id("main").flex_1().h_full().child(
             div()
@@ -540,6 +560,7 @@ impl MinActionApp {
             }
             TodoTab::Today => div().child(today_view::render(entity.clone(), self)),
             TodoTab::History => div().child(history_view::render(entity.clone(), self)),
+            TodoTab::Stats => div().child(stats_view::render(self)),
         }
     }
 }
@@ -598,7 +619,6 @@ impl Render for MinActionApp {
                     StructDialog::Rename(d) => d.into_any_element(),
                     StructDialog::Delete(d) => d.into_any_element(),
                     StructDialog::Frequency(d) => d.into_any_element(),
-                    StructDialog::Stats(d) => d.into_any_element(),
                     StructDialog::Note(d) => d.into_any_element(),
                     StructDialog::Reset(d) => d.into_any_element(),
                     StructDialog::Create(d) => d.into_any_element(),
