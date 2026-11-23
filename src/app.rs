@@ -72,7 +72,7 @@ pub(crate) enum StructDialog {
     Reset(Entity<reset_dialog::ResetDialog>),
     /// 新建目标 / 分类 / 任务。
     Create(Entity<create_dialog::CreateDialog>),
-    /// 统一配置窗口（每日上限 / 存储地址）。
+    /// 统一配置窗口（每日上限 / 存储地址 / 主题）。
     Config(Entity<config_dialog::ConfigDialog>),
 }
 
@@ -123,7 +123,7 @@ pub struct MinActionApp {
     pub(crate) menu_open: bool,
     /// 当前打开的任务内容编辑器；`None` 表示未打开。
     pub(crate) editing: Option<Entity<task_editor::TaskEditor>>,
-    /// 当前打开的结构树对话框（重命名/删除/频率/统计/存储）；`None` 表示未打开。
+    /// 当前打开的结构树对话框（重命名/删除/频率/统计/配置）；`None` 表示未打开。
     pub(crate) dialog: Option<StructDialog>,
     /// 今日行动列表（含已结算与顺延），供今日页渲染与完成/跳过/撤销。
     pub(crate) today_actions: Vec<Action>,
@@ -552,6 +552,15 @@ pub fn apply_theme_choice(choice: ThemeChoice, window: &mut Window, cx: &mut App
         ThemeChoice::System => cx.window_appearance().into(),
     };
     Theme::change(mode, Some(window), cx);
+}
+
+/// 主题偏好的展示文案，状态栏与配置窗口共用。
+pub(crate) fn theme_label(choice: ThemeChoice) -> &'static str {
+    match choice {
+        ThemeChoice::System => "跟随系统",
+        ThemeChoice::Light => "浅色",
+        ThemeChoice::Dark => "深色",
+    }
 }
 
 #[cfg(test)]

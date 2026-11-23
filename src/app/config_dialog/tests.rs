@@ -1,11 +1,32 @@
-//! 配置窗口的存储迁移接线验收（数据层已有独立测试，这里验证 UI 侧调用结果）。
+//! 配置窗口的无头验收：存储迁移接线与左侧页签清单。
 
 use std::path::PathBuf;
 
+use crate::app::theme_label;
 use crate::config::Bootstrap;
+use crate::model::ThemeChoice;
 use crate::store::Store;
 
-use super::migrate_store;
+use super::{ConfigTab, migrate_store};
+
+/// 左侧页签应覆盖每日上限、存储地址与主题，顺序固定。
+#[test]
+fn tabs_cover_all_settings() {
+    let labels: Vec<&str> = ConfigTab::ALL.iter().map(|tab| tab.label()).collect();
+    assert_eq!(
+        labels,
+        vec!["每日上限", "存储地址", "主题"],
+        "配置窗口左侧应有三项设置"
+    );
+}
+
+/// 主题选项文案与设置项一一对应，不复用持久化取值。
+#[test]
+fn theme_options_are_readable() {
+    assert_eq!(theme_label(ThemeChoice::System), "跟随系统");
+    assert_eq!(theme_label(ThemeChoice::Light), "浅色");
+    assert_eq!(theme_label(ThemeChoice::Dark), "深色");
+}
 
 /// 为每次测试准备隔离的临时根，避免目录互相污染。
 fn temp_base(tag: &str) -> PathBuf {

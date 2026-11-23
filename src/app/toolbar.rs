@@ -1,7 +1,7 @@
 //! 顶部菜单栏 / 底部状态栏渲染与对应入口。
 //!
-//! 菜单栏提供「编辑」（新建目标/分类/任务、每日上限、主题切换）、「统计」与
-//! 「存储」（配置窗口的存储地址页），以及中央区的三个页签（任务 / 今日待办 / 历史待办）。
+//! 菜单栏提供「编辑」（新建目标/分类/任务、每日上限、存储地址）与「统计」，以及中央区的
+//! 三个页签（任务 / 今日待办 / 历史待办）；主题在配置窗口里切换。
 
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
@@ -9,8 +9,7 @@ use gpui_kit::*;
 use super::config_dialog::ConfigTab;
 use super::create_dialog::CreateKind;
 use super::style::{SurfaceExt, TEXT_LG, TEXT_XS};
-use super::{MinActionApp, TodoTab, WINDOW_TITLE, apply_theme_choice};
-use crate::model::ThemeChoice;
+use super::{MinActionApp, TodoTab, WINDOW_TITLE, theme_label};
 use crate::palette::Palette;
 
 impl MinActionApp {
@@ -61,7 +60,7 @@ impl MinActionApp {
             )
     }
 
-    /// 渲染菜单栏：编辑（新建 / 每日上限 / 主题）、统计、存储与三个页签。
+    /// 渲染菜单栏：编辑（新建 / 每日上限 / 存储地址）、统计与三个页签。
     pub(crate) fn render_toolbar(&self, entity: Entity<MinActionApp>) -> impl IntoElement {
         let p = self.palette;
         let open = self.menu_open;
@@ -102,16 +101,6 @@ impl MinActionApp {
                     });
                 }
             }))
-            .child(menu_command("menu-storage", "存储", &p, {
-                let entity = entity.clone();
-                move |window, cx| {
-                    entity.update(cx, |root, cx| {
-                        root.close_menu();
-                        let app_entity = cx.entity();
-                        root.open_config(ConfigTab::Storage, app_entity, window, cx);
-                    });
-                }
-            }))
             .child(divider(&p))
             .children(
                 [TodoTab::Tasks, TodoTab::Today, TodoTab::History]
@@ -127,7 +116,6 @@ impl MinActionApp {
                     goal_label.clone(),
                     category_scope,
                     category_label.clone(),
-                    self.theme_choice,
                     &p,
                 )))
             })
@@ -235,14 +223,13 @@ fn tab_button(
         })
 }
 
-/// 「编辑」下拉：新建目标 / 分类 / 任务，以及每日上限与主题。
+/// 「编辑」下拉：新建目标 / 分类 / 任务，以及每日上限与存储地址。
 fn edit_dropdown(
     app: Entity<MinActionApp>,
     goal_scope: Option<crate::model::GoalId>,
     goal_label: String,
     category_scope: Option<crate::model::CategoryId>,
     category_label: String,
-    theme: ThemeChoice,
     p: &Palette,
 ) -> impl IntoElement {
     div()
@@ -317,43 +304,16 @@ fn edit_dropdown(
                 });
             }
         }))
-        .child(menu_separator(p))
-        .child(dropdown_section("主题", p))
-        .child(theme_item(app.clone(), ThemeChoice::System, theme, p))
-        .child(theme_item(app.clone(), ThemeChoice::Light, theme, p))
-        .child(theme_item(app, ThemeChoice::Dark, theme, p))
-}
-
-/// 「主题」下的单个选项：当前项高亮，点击即切换并收起菜单。
-fn theme_item(
-    app: Entity<MinActionApp>,
-    choice: ThemeChoice,
-    current: ThemeChoice,
-    p: &Palette,
-) -> impl IntoElement {
-    dropdown_item(
-        SharedString::from(format!("theme-menu-{}", choice.as_str())),
-        theme_label(choice),
-        p,
-        choice == current,
-        move |window, cx| {
-            apply_theme_choice(choice, window, cx);
-            app.update(cx, |root, cx| {
-                root.close_menu();
-                let _ = root.set_theme(choice);
-                cx.notify();
-            });
-        },
-    )
-}
-
-/// 主题偏好的展示文案。
-fn theme_label(choice: ThemeChoice) -> &'static str {
-    match choice {
-        ThemeChoice::System => "跟随系统",
-        ThemeChoice::Light => "浅色",
-        ThemeChoice::Dark => "深色",
-    }
+        .child(dropdown_item("edit-storage", "存储地址", p, false, {
+            let app = app.clone();
+            move |window, cx| {
+                app.update(cx, |root, cx| {
+                    root.close_menu();
+                    let entity = cx.entity();
+                    root.open_config(ConfigTab::Storage, entity, window, cx);
+                });
+            }
+        }))
 }
 
 /// 工具栏 / 状态栏中的竖直分隔线。
@@ -365,7 +325,7 @@ fn divider(palette: &Palette) -> Div {
         .bg(palette.border)
 }
 
-/// 下拉菜单内的可点击项；`active` 用于标记当前取值（如当前主题）。
+/// 下拉菜单内的可点击项；`active` 用于标记当前选中项。
 fn dropdown_item(
     id: impl Into<ElementId>,
     label: &'static str,
@@ -383,14 +343,4 @@ fn dropdown_item(
 /// 下拉菜单内的横向分隔线。
 fn menu_separator(p: &Palette) -> Div {
     div().h(px(1.)).mx_1().my_1().bg(p.border)
-}
-
-/// 下拉菜单内的分组标题。
-fn dropdown_section(label: &'static str, p: &Palette) -> Div {
-    div()
-        .px_3()
-        .py_1()
-        .text_size(TEXT_XS)
-        .text_color(p.text_muted)
-        .child(label)
 }
