@@ -76,15 +76,6 @@ pub(crate) enum StructDialog {
     Config(Entity<config_dialog::ConfigDialog>),
 }
 
-/// 菜单栏当前展开的下拉。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum MenuKind {
-    /// 编辑：新建目标 / 分类 / 任务。
-    Edit,
-    /// 主题：跟随系统 / 浅色 / 深色。
-    Theme,
-}
-
 /// 中央区页签。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TodoTab {
@@ -128,8 +119,8 @@ pub struct MinActionApp {
     pub(crate) selected_category: Option<CategoryId>,
     /// 当前中央区页签。
     pub(crate) tab: TodoTab,
-    /// 菜单栏当前展开的下拉；`None` 表示都未展开。
-    pub(crate) open_menu: Option<MenuKind>,
+    /// 「编辑」下拉是否展开。
+    pub(crate) menu_open: bool,
     /// 当前打开的任务内容编辑器；`None` 表示未打开。
     pub(crate) editing: Option<Entity<task_editor::TaskEditor>>,
     /// 当前打开的结构树对话框（重命名/删除/频率/统计/存储）；`None` 表示未打开。
@@ -173,7 +164,7 @@ impl MinActionApp {
             selected_goal: None,
             selected_category: None,
             tab: TodoTab::Tasks,
-            open_menu: None,
+            menu_open: false,
             editing: None,
             dialog: None,
             today_actions: Vec::new(),
@@ -301,18 +292,14 @@ impl MinActionApp {
         self.tab = tab;
     }
 
-    /// 切换菜单栏下拉：同一项收起，不同项切换。
-    pub(crate) fn toggle_menu(&mut self, menu: MenuKind) {
-        self.open_menu = if self.open_menu == Some(menu) {
-            None
-        } else {
-            Some(menu)
-        };
+    /// 展开 / 收起「编辑」下拉。
+    pub(crate) fn toggle_menu(&mut self) {
+        self.menu_open = !self.menu_open;
     }
 
-    /// 关闭菜单栏下拉。
+    /// 关闭「编辑」下拉。
     pub(crate) fn close_menu(&mut self) {
-        self.open_menu = None;
+        self.menu_open = false;
     }
 
     /// 用迁移后的新连接替换数据层并重载界面。
